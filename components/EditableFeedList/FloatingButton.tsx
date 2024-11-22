@@ -28,7 +28,7 @@ function useStyles() {
 
   const style = StyleSheet.create({
     floatingButton: {
-      position: "static",
+      position: "absolute",
       bottom: sizes.getSizeProportial(2),
       left: width - sizes.getSizeProportial(4),
       width: sizes.getSizeProportial(3),

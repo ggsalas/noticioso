@@ -11,6 +11,7 @@ export default function AddFeed() {
   return (
     <EditableFeedList
       feeds={feeds ?? []}
+      loading={Boolean(loading)}
       setFeeds={updateFeeds}
       addOrEditFeed={addOrEditFeed}
       deleteFeed={deleteFeed}

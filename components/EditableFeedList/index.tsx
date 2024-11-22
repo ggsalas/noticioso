@@ -9,6 +9,7 @@ import { Modal } from "./Modal";
 
 type EditableFeedList = {
   feeds: Feed[];
+  loading: boolean;
   setFeeds: (feeds: Feed[]) => Promise<boolean | undefined>;
   addOrEditFeed: (feed: Feed) => Promise<boolean | undefined>;
   deleteFeed: (feed: Feed) => Promise<boolean | undefined>;
@@ -16,6 +17,7 @@ type EditableFeedList = {
 
 export const EditableFeedList = ({
   feeds,
+  loading,
   setFeeds,
   addOrEditFeed,
   deleteFeed,
@@ -60,6 +62,7 @@ export const EditableFeedList = ({
         feed={openModal}
         onSubmit={onSubmitItem}
         onDelete={onDeleteItem}
+        loading={loading}
       />
 
       <GestureHandlerRootView style={{ flex: 1 }}>
@@ -92,8 +95,6 @@ function useOptimistic(
 ): [Feed[], Dispatch<SetStateAction<Feed[]>>] {
   const [localFeeds, setLocalFeeds] = useState<Feed[]>(feeds);
 
-  console.log("on useOptimistic feeds: ", feeds);
-  console.log("on useOptimistic localFeeds: ", localFeeds);
   useEffect(() => {
     setLocalFeeds(feeds);
   }, [feeds]);

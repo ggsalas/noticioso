@@ -8,19 +8,27 @@ import {
   Pressable,
   Text,
   Alert,
+  TextStyle,
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 
 type FormProps = {
   item?: NewFeed | null;
+  loading?: boolean;
   onSubmit: (feed: Feed) => void;
   onDelete: (feed: Feed) => void;
   onCancel: () => void;
 };
 
-export function Form({ item, onSubmit, onCancel, onDelete }: FormProps) {
+export function Form({
+  item,
+  loading,
+  onSubmit,
+  onCancel,
+  onDelete,
+}: FormProps) {
   const { isNew, ...feed } = item ?? ({} as NewFeed);
-  const { style } = useStyles(false);
+  const { style, colors } = useStyles();
   const [name, setName] = useState(feed.name);
   const [url, setUrl] = useState(feed.url);
   const [lang, setLang] = useState<"es" | "en">(feed.lang);
@@ -42,6 +50,7 @@ export function Form({ item, onSubmit, onCancel, onDelete }: FormProps) {
           placeholder="Name"
           value={name}
           onChangeText={setName}
+          editable={!loading}
         />
         <TextInput
           style={style.input}
@@ -49,29 +58,43 @@ export function Form({ item, onSubmit, onCancel, onDelete }: FormProps) {
           value={url}
           onChangeText={setUrl}
           keyboardType="url"
+          editable={!loading}
         />
-        <Picker
-          style={style.select}
-          selectedValue={lang}
-          onValueChange={(itemValue) => setLang(itemValue)}
-          prompt="Feed language"
-          placeholder="Feed language"
-          itemStyle={style.selectItem}
-        >
-          <Picker.Item label="Spanish" value="es" />
-          <Picker.Item label="English" value="en" />
-        </Picker>
-        <Picker
-          style={style.select}
-          selectedValue={oldestArticle}
-          onValueChange={(itemValue) => setOldestArticle(itemValue)}
-          prompt="Read artickes from"
-          placeholder="Read artickes from"
-          itemStyle={style.selectItem}
-        >
-          <Picker.Item label="Today" value="1" />
-          <Picker.Item label="Last Week" value="7" />
-        </Picker>
+        <View style={style.formPicker}>
+          <Text style={style.formPickerlabel}>Feed language:</Text>
+          <Picker
+            style={style.picker}
+            selectedValue={lang}
+            onValueChange={(itemValue) => setLang(itemValue)}
+            prompt="Feed language"
+            placeholder="Feed language"
+            enabled={!loading}
+            mode="dropdown"
+            dropdownIconColor={colors.text}
+            dropdownIconRippleColor={colors.background}
+          >
+            <Picker.Item label="Spanish" value="es" style={style.pickerItem} />
+            <Picker.Item label="English" value="en" style={style.pickerItem} />
+          </Picker>
+        </View>
+
+        <View style={style.formPicker}>
+          <Text style={style.formPickerlabel}>Articles from: </Text>
+          <Picker
+            style={style.picker}
+            selectedValue={oldestArticle}
+            onValueChange={(itemValue) => setOldestArticle(itemValue)}
+            prompt="Read artickes from"
+            placeholder="Read artickes from"
+            enabled={!loading}
+            mode="dropdown"
+            dropdownIconColor={colors.text}
+            dropdownIconRippleColor={colors.background}
+          >
+            <Picker.Item label="Today" value="1" style={style.pickerItem} />
+            <Picker.Item label="Last Week" value="7" style={style.pickerItem} />
+          </Picker>
+        </View>
       </View>
 
       <View style={style.actions}>
@@ -86,29 +109,35 @@ export function Form({ item, onSubmit, onCancel, onDelete }: FormProps) {
               oldestArticle,
             })
           }
+          disabled={loading}
         >
-          <Text style={style.buttomText}>Save Feed</Text>
+          <Text style={style.buttonText}>Save Feed</Text>
         </Pressable>
 
-        <Pressable style={style.button} onPress={onCancel}>
-          <Text style={style.buttomText}>Cancel</Text>
+        <Pressable
+          style={style.buttonWithBorder}
+          onPress={onCancel}
+          disabled={loading}
+        >
+          <Text style={style.buttonWithBorderText}>Cancel</Text>
         </Pressable>
 
         {!isNew && (
           <Pressable
-            style={style.button}
+            style={style.buttonTransparent}
+            disabled={loading}
             onPress={() => {
               Alert.alert(
                 "Delete Feed",
-                `The feed ${item.name} will be removed`,
+                `The feed "${feed.name}" will be removed`,
                 [
-                  { text: "Cancel", onPress: () => null },
-                  { text: "DELETE", onPress: () => onDelete(item) },
+                  { text: "Cancel" },
+                  { text: "DELETE", onPress: () => onDelete(feed) },
                 ]
               );
             }}
           >
-            <Text style={style.buttomText}>Delete</Text>
+            <Text style={style.buttonTransparentText}>Delete</Text>
           </Pressable>
         )}
       </View>
@@ -116,9 +145,20 @@ export function Form({ item, onSubmit, onCancel, onDelete }: FormProps) {
   );
 }
 
-function useStyles(isActive?: boolean) {
+function useStyles() {
   const { theme } = useThemeContext();
   const { colors, fonts, sizes } = theme;
+
+  const button = {
+    marginTop: sizes.s1,
+    paddingVertical: sizes.s0_50,
+    paddingHorizontal: sizes.s1,
+  };
+  const buttonText: TextStyle = {
+    fontSize: fonts.marginP,
+    fontWeight: "bold",
+    textAlign: "center",
+  };
 
   const style = StyleSheet.create({
     formContainer: {
@@ -139,37 +179,60 @@ function useStyles(isActive?: boolean) {
       fontSize: fonts.fontSizeSmall,
       height: sizes.s2,
       lineHeight: sizes.s2,
-      borderColor: isActive ? colors.backgroundLight : colors.borderDark,
-      color: isActive ? colors.backgroundDark_text : colors.text,
+      borderColor: colors.borderDark,
+      color: colors.text,
       borderWidth: 0,
-      borderBottomWidth: 0.5,
+      borderBottomWidth: 1,
       paddingHorizontal: 0,
     },
-    select: {
+    picker: {
       marginHorizontal: -16,
-      height: sizes.s2,
-      lineHeight: sizes.s2,
-      borderBottomWidth: 0.5,
-      borderColor: "red",
+      marginTop: -16,
+      height: sizes.s1_5,
+      lineHeight: sizes.s1_5,
     },
-    selectItem: {
-      backgroundColor: "red",
+    pickerItem: {
+      backgroundColor: "transparent",
+      color: colors.text,
+    },
+    formPicker: {
+      display: "flex",
+      flexDirection: "column",
+      marginTop: sizes.s0_50,
+      borderBottomColor: colors.borderDark,
+      borderBottomWidth: 1,
+      paddingBottom: sizes.s0_50,
+    },
+    formPickerlabel: {
+      color: colors.text,
     },
     button: {
-      marginTop: sizes.s1,
-      backgroundColor: isActive
-        ? colors.backgroundLight
-        : colors.backgroundDark,
-      paddingVertical: sizes.s0_50,
-      paddingHorizontal: sizes.s1,
+      ...button,
+      backgroundColor: colors.backgroundDark,
     },
-    buttomText: {
-      fontSize: fonts.marginP,
-      fontWeight: "bold",
-      color: isActive ? colors.text : colors.backgroundDark_text,
-      textAlign: "center",
+    buttonText: {
+      ...buttonText,
+      color: colors.backgroundDark_text,
+    },
+    buttonTransparent: {
+      ...button,
+      color: "transparent",
+    },
+    buttonTransparentText: {
+      ...buttonText,
+      color: colors.text,
+    },
+    buttonWithBorder: {
+      ...button,
+      color: "transparent",
+      borderColor: colors.borderDark,
+      borderWidth: 1,
+    },
+    buttonWithBorderText: {
+      ...buttonText,
+      color: colors.text,
     },
   });
 
-  return { style };
+  return { style, colors };
 }

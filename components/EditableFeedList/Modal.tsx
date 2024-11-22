@@ -6,6 +6,7 @@ import { Form } from "./Form";
 type ModalProps = {
   isOpen?: boolean;
   feed?: NewFeed | null;
+  loading?: boolean;
   onClose: () => void;
   onSubmit: (feed: Feed) => void;
   onDelete: (feed: Feed) => void;
@@ -15,6 +16,7 @@ export function Modal({
   isOpen,
   onClose,
   feed,
+  loading,
   onSubmit,
   onDelete,
 }: ModalProps) {
@@ -32,6 +34,7 @@ export function Modal({
         <View style={style.modalView}>
           <Form
             item={feed}
+            loading={loading}
             onSubmit={onSubmit}
             onCancel={onClose}
             onDelete={onDelete}
