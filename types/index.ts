@@ -6,17 +6,16 @@ export type Article = ReadabilityArticle;
 
 export type OldestArticle = 1 | 7;
 
-export interface Feed {
+export type Feed = {
   id: string;
   name: string;
   url: string;
   oldestArticle: OldestArticle;
   lang: "en" | "es";
-}
+};
 
-export type LocalFeed = Feed & {
-  isOpen?: boolean;
-  isLoading?: boolean;
+export type NewFeed = Feed & {
+  isNew?: boolean;
 };
 
 export type Navigation = {

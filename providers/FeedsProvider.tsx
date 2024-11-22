@@ -1,6 +1,12 @@
 import { ReactNode, createContext, useContext, useState } from "react";
 import { useAsyncFn } from "../hooks/useFetch";
-import { getFeeds, importFeeds, saveFeeds } from "@/domain/getFeeds";
+import {
+  createOrEditFeed,
+  deleteFeed,
+  getFeeds,
+  importFeeds,
+  saveFeeds,
+} from "@/domain/getFeeds";
 import { Feed } from "@/types";
 
 type FeedsProviderProps = { children: ReactNode };
@@ -12,12 +18,16 @@ type FeedsContextType = {
   getFeeds: () => void;
   importFeeds: (feeds: string) => Promise<boolean | undefined>;
   updateFeeds: (feeds: Feed[]) => Promise<boolean | undefined>;
+  addOrEditFeed: (feed: Feed) => Promise<boolean | undefined>;
+  deleteFeed: (feed: Feed) => Promise<boolean | undefined>;
 };
 
 const FeedsContext = createContext<FeedsContextType>({
   getFeeds: () => null,
   importFeeds: async ([]) => true,
   updateFeeds: async ([]) => true,
+  addOrEditFeed: async ({}) => true,
+  deleteFeed: async ({}) => true,
 });
 
 export function FeedsProvider({ children }: FeedsProviderProps) {
@@ -57,6 +67,35 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
     }
   };
 
+  const handleAddOrEditFeed = async (feed: Feed) => {
+    try {
+      const success = await createOrEditFeed(feed);
+      setActionError(null);
+
+      if (success) {
+        await refetchFeeds();
+        return true;
+      }
+    } catch (e) {
+      setActionError(`Cannot add feed ${(e as Error).message}`);
+    }
+  };
+
+  const handleDeleteFeed = async (feed: Feed) => {
+    try {
+      const success = await deleteFeed(feed);
+      setActionError(null);
+
+      console.log("feed deleted ", feed.name);
+      if (success) {
+        await refetchFeeds();
+        return true;
+      }
+    } catch (e) {
+      setActionError(`Cannot delete the feed ${(e as Error).message}`);
+    }
+  };
+
   return (
     <FeedsContext.Provider
       value={{
@@ -66,6 +105,8 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
         getFeeds: refetchFeeds,
         importFeeds: handleImportFeeds,
         updateFeeds: handleUpdateFeeds,
+        addOrEditFeed: handleAddOrEditFeed,
+        deleteFeed: handleDeleteFeed,
       }}
     >
       {children}

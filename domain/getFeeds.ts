@@ -21,13 +21,9 @@ export async function getFeedByUrl(url: string): Promise<Feed | undefined> {
 }
 
 export async function saveFeeds(feeds: Feed[]) {
-  if (feeds.length > 0) {
-    const feedsData = JSON.stringify(feeds);
-    await AsyncStorage.setItem(FEEDS_LIST_KEY, feedsData);
-    return true;
-  } else {
-    throw new Error("No feeds to save");
-  }
+  const feedsData = JSON.stringify(feeds) ?? [];
+  await AsyncStorage.setItem(FEEDS_LIST_KEY, feedsData);
+  return true;
 }
 
 export async function removeAllFeeds() {
@@ -49,5 +45,53 @@ export async function importFeeds(data: string) {
     return true;
   } else {
     throw new Error("Data has incorect format");
+  }
+}
+
+export async function createOrEditFeed(feed: Feed) {
+  try {
+    const feeds = await getFeeds();
+    const isExistingFeed = feeds && feeds?.some((f) => f.id === feed.id);
+    const isValidFeed =
+      feed.name && feed.url && feed.oldestArticle >= 1 && feed.lang;
+
+    if (!isValidFeed) {
+      throw new Error("Feed is not valid");
+    }
+
+    const getUpdatedFeeds = () => {
+      if (isExistingFeed) {
+        return feeds.map((f) => {
+          if (f.id === feed.id) {
+            return feed;
+          } else {
+            return f;
+          }
+        });
+      } else {
+        return Array.isArray(feeds) ? [...feeds, feed] : [feed];
+      }
+    };
+
+    return await saveFeeds(getUpdatedFeeds());
+  } catch (e) {
+    throw new Error("Feed cannot be added");
+  }
+}
+
+export async function deleteFeed(feed: Feed) {
+  try {
+    const feeds = await getFeeds();
+    const isExistingFeed = feeds && feeds?.some((f) => f.id === feed.id);
+
+    if (!isExistingFeed) {
+      throw new Error("Feed do not exist in the saved feeds");
+    }
+
+    const updatedFeeds = feeds.filter((f) => f.id !== feed.id);
+
+    return await saveFeeds(updatedFeeds);
+  } catch (e) {
+    throw new Error("Feed cannot be deleted");
   }
 }

@@ -1,25 +1,23 @@
 import { useThemeContext } from "@/theme/ThemeProvider";
-import { LocalFeed } from "@/types";
+import { Feed } from "@/types";
 import { MaterialIcons } from "@expo/vector-icons";
 import { Dispatch, SetStateAction, useState } from "react";
 import { Text, TouchableOpacity, StyleSheet, View } from "react-native";
-import { Form } from "./Form";
 
 type ItemProps = {
-  item: LocalFeed;
+  item: Feed;
   drag: () => void;
   isActive: boolean;
-  onSubmit: (feed: LocalFeed) => void;
-  onOpen: (feed: LocalFeed) => void;
+  onOpenModal: (feed: Feed) => void;
 };
 
-export function Item({ item, drag, isActive, onSubmit, onOpen }: ItemProps) {
+export function Item({ item, drag, isActive, onOpenModal }: ItemProps) {
   const { style, colors } = useStyles(isActive);
 
   return (
     <TouchableOpacity
       style={style.container}
-      onPress={() => onOpen(item)}
+      onPress={() => onOpenModal(item)}
       onLongPress={drag}
     >
       <View style={style.title}>
@@ -32,10 +30,6 @@ export function Item({ item, drag, isActive, onSubmit, onOpen }: ItemProps) {
           />
         </TouchableOpacity>
       </View>
-
-      {item.isOpen && (
-        <Form item={item} onSubmit={onSubmit} isActive={isActive} />
-      )}
     </TouchableOpacity>
   );
 }
@@ -48,7 +42,7 @@ function useStyles(isActive: boolean) {
     container: {
       backgroundColor: isActive ? colors.backgroundDark : colors.background,
       flexDirection: "column",
-      borderWidth: 1,
+      borderBottomWidth: 1,
       borderBottomColor: colors.borderDark,
       paddingHorizontal: sizes.s1,
       paddingVertical: sizes.s1,
@@ -59,10 +53,10 @@ function useStyles(isActive: boolean) {
       justifyContent: "space-between",
     },
     label: {
-      fontSize: fonts.fontSizeP,
+      fontSize: fonts.fontSizeSmall,
+      fontWeight: "bold",
       lineHeight: fonts.lineHeightMinimal,
       color: isActive ? colors.backgroundDark_text : colors.text,
-      fontFamily: "",
     },
     form: {
       height: 20,

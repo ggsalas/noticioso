@@ -1,67 +1,99 @@
-import { Feed } from "@/types";
-import { Dispatch, SetStateAction, useEffect, useState } from "react";
+import { Feed, NewFeed } from "@/types";
+import { Dispatch, SetStateAction, useEffect, useRef, useState } from "react";
 import DraggableFlatList from "react-native-draggable-flatlist";
-import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { FlatList, GestureHandlerRootView } from "react-native-gesture-handler";
 import { Item } from "./Item";
+import { FloatingButton } from "./FloatingButton";
+import { View, Text } from "react-native";
+import { Modal } from "./Modal";
 
 type EditableFeedList = {
   feeds: Feed[];
-  setFeeds: (feeds: Feed[]) => void;
+  setFeeds: (feeds: Feed[]) => Promise<boolean | undefined>;
+  addOrEditFeed: (feed: Feed) => Promise<boolean | undefined>;
+  deleteFeed: (feed: Feed) => Promise<boolean | undefined>;
 };
 
-type LocalFeed = Feed & {
-  isOpen?: boolean;
-  isLoading?: boolean;
-};
+export const EditableFeedList = ({
+  feeds,
+  setFeeds,
+  addOrEditFeed,
+  deleteFeed,
+}: EditableFeedList) => {
+  // To avoid swipe back the elements while waiting store response
+  const [localFeeds, setLocalFeeds] = useOptimistic(feeds);
+  const listRef = useRef<FlatList<Feed>>(null);
+  const [openModal, setOpenModal] = useState<NewFeed | null>();
 
-function getFeedsFromLocalFeeds(feeds: LocalFeed[]): Feed[] {
-  return feeds.map(({ isOpen, isLoading, ...feed }) => feed);
-}
-
-export const EditableFeedList = ({ feeds, setFeeds }: EditableFeedList) => {
-  // To avoid swipe back the elements
-  const [localFeeds, setLocalFeeds] = useOptimisticUpdates(feeds);
-
-  const onSubmitItem = (item: LocalFeed) => {
-    const updatedFeeds = feeds.map((feed) => {
-      if (feed.id === item.id) return { ...item, isLoading: true };
-      return feed;
-    });
-
-    setLocalFeeds(updatedFeeds);
-    setFeeds(getFeedsFromLocalFeeds(updatedFeeds));
+  const onSubmitItem = async (feed: Feed) => {
+    const succeed = await addOrEditFeed(feed);
+    if (succeed) {
+      setOpenModal(null);
+    }
   };
 
-  const onOpen = (item: LocalFeed) => {
-    const updatedFeeds = feeds.map((feed) => {
-      if (feed.id === item.id) return { ...item, isOpen: true };
-      return { ...feed, isOpen: false };
-    });
-    setLocalFeeds(updatedFeeds);
+  const onDeleteItem = async (feed: Feed) => {
+    const succeed = await deleteFeed(feed);
+    if (succeed) {
+      setOpenModal(null);
+    }
   };
+
+  const handleAddFeeds = () => {
+    setOpenModal({
+      id: Date.now().toString(),
+      lang: "es",
+      name: "",
+      url: "",
+      oldestArticle: 1,
+      isNew: true,
+    });
+  };
+
+  const onOpenModal = (feed: Feed) => setOpenModal(feed);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <DraggableFlatList
-        data={localFeeds}
-        renderItem={(props) => (
-          <Item {...{ ...props, onSubmit: onSubmitItem, onOpen }} />
-        )}
-        keyExtractor={(item) => item.id}
-        onDragEnd={({ data }) => {
-          setLocalFeeds(data);
-          setFeeds(data);
-        }}
+    <View style={{ flex: 1 }}>
+      <Modal
+        isOpen={Boolean(openModal)}
+        onClose={() => setOpenModal(null)}
+        feed={openModal}
+        onSubmit={onSubmitItem}
+        onDelete={onDeleteItem}
       />
-    </GestureHandlerRootView>
+
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        {feeds.length === 0 ? (
+          <Text>No feeds has been added</Text>
+        ) : (
+          <DraggableFlatList
+            ref={listRef}
+            scrollEnabled
+            scrollToOverflowEnabled
+            showsHorizontalScrollIndicator
+            data={localFeeds}
+            renderItem={(props) => <Item {...{ ...props, onOpenModal }} />}
+            keyExtractor={(item) => item.id}
+            onDragEnd={({ data }) => {
+              setLocalFeeds(data);
+              setFeeds(data);
+            }}
+          />
+        )}
+      </GestureHandlerRootView>
+
+      <FloatingButton onAddItem={handleAddFeeds} />
+    </View>
   );
 };
 
-function useOptimisticUpdates(
+function useOptimistic(
   feeds: Feed[]
 ): [Feed[], Dispatch<SetStateAction<Feed[]>>] {
   const [localFeeds, setLocalFeeds] = useState<Feed[]>(feeds);
 
+  console.log("on useOptimistic feeds: ", feeds);
+  console.log("on useOptimistic localFeeds: ", localFeeds);
   useEffect(() => {
     setLocalFeeds(feeds);
   }, [feeds]);
