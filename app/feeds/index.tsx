@@ -144,7 +144,7 @@ function useStyles() {
     rightButton: {},
     rightButtonText: {
       fontSize: fonts.marginP,
-      color: colors.text,
+      color: colors.textGrey,
     },
   });
 

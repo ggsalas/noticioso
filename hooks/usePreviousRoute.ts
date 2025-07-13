@@ -1,25 +1,24 @@
-import { ParamListBase, RouteProp, useRoute } from "@react-navigation/native";
-import { useNavigation } from "expo-router";
 import { useEffect, useState } from "react";
+import { useNavigationContainerRef } from "expo-router";
 
 export function usePreviousRoute() {
-  const navigation = useNavigation();
-  const route = useRoute();
-  const [previousRoute, setPreviousRoute] =
-    useState<RouteProp<ParamListBase> | null>(null);
+  const navigationRef = useNavigationContainerRef();
+  const [previousRoute, setPreviousRoute] = useState<string | null>(null);
 
   useEffect(() => {
-    const unsubscribe = navigation.addListener("state", (e) => {
-      const currentRoute =
-        e?.data?.state?.routes && e?.data?.state?.routes[e.data.state.index];
+    if (navigationRef.isReady()) {
+      const unsubscribe = navigationRef.addListener("state", () => {
+        const currentRoute = navigationRef.getCurrentRoute();
+        const previousRoute = navigationRef.getState()?.routes[navigationRef.getState()!.routes.length - 2];
 
-      if (currentRoute.name !== route.name) {
-        setPreviousRoute(currentRoute);
-      }
-    });
+        if (currentRoute && previousRoute && currentRoute.name !== previousRoute.name) {
+          setPreviousRoute(previousRoute.name);
+        }
+      });
 
-    return unsubscribe;
-  }, [navigation, route]);
+      return unsubscribe;
+    }
+  }, [navigationRef]);
 
   return previousRoute;
 }
