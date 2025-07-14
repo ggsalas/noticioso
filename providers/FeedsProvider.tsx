@@ -1,5 +1,5 @@
 import { ReactNode, createContext, useContext, useState } from "react";
-import { useAsyncFn } from "../hooks/useFetch";
+import { useAsyncFn } from "../hooks/useAsyncFn";
 import {
   createOrEditFeed,
   deleteFeed,

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { HandleRouterLinkData } from "@/types";
 import { useThemeContext } from "@/theme/ThemeProvider";
 import { HTMLPagesNav } from "@/components/HTMLPagesNav";
-import { usePreviousRoute } from "@/hooks/usePreviousRoute";
+import { usePreviousRoute } from "~/providers/PreviousRoute";
 import { useFeedsContext } from "@/providers/FeedsProvider";
 
 export default function Feeds() {
@@ -69,7 +69,7 @@ export default function Feeds() {
         break-inside: avoid;
       }
 
-      .item[data-route-link*="${previousArticleUrl}"] {
+      .item[data-route-link*="${getRouteLink(previousArticleUrl)}"] {
         border-bottom-width: 5px;
       }
 
@@ -144,7 +144,7 @@ function useStyles() {
     rightButton: {},
     rightButtonText: {
       fontSize: fonts.marginP,
-      color: colors.textGrey,
+      color: colors.text,
     },
   });
 

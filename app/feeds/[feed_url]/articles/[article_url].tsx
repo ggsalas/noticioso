@@ -1,7 +1,7 @@
 import { getArticle } from "@/domain/getArticle";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { Text, StyleSheet, View } from "react-native";
-import { useAsyncFn } from "@/hooks/useFetch";
+import { useAsyncFn } from "~/hooks/useAsyncFn";
 import { HTMLPagesNav } from "@/components/HTMLPagesNav/index";
 import { useRouter } from "expo-router";
 import { useThemeContext } from "@/theme/ThemeProvider";

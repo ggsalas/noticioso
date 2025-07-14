@@ -21,6 +21,7 @@ import { ThemeProvider as NavigationThemeProvider } from "@react-navigation/nati
 import { DarkTheme, DefaultTheme } from "@/constants/navigationThemes";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { FeedsProvider } from "@/providers/FeedsProvider";
+import { PreviousRouteProvider } from "~/providers/PreviousRoute";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -53,13 +54,28 @@ export default function RootLayout() {
       <NavigationThemeProvider
         value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
       >
-        <FeedsProvider>
-          <Stack>
-            <Stack.Screen name="index" options={{ title: "Home" }} />
-            <Stack.Screen name="+not-found" />
-            <Stack.Screen name="config" />
-          </Stack>
-        </FeedsProvider>
+        <PreviousRouteProvider>
+          <FeedsProvider>
+            <Stack
+              screenOptions={{
+                headerStyle: {
+                  backgroundColor:
+                    colorScheme === "dark"
+                      ? DarkTheme.colors.card
+                      : DefaultTheme.colors.card,
+                },
+                headerTintColor:
+                  colorScheme === "dark"
+                    ? DarkTheme.colors.text
+                    : DefaultTheme.colors.text,
+              }}
+            >
+              <Stack.Screen name="index" options={{ title: "Home" }} />
+              <Stack.Screen name="+not-found" />
+              <Stack.Screen name="config" />
+            </Stack>
+          </FeedsProvider>
+        </PreviousRouteProvider>
       </NavigationThemeProvider>
     </ThemeProvider>
   );

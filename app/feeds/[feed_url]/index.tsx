@@ -1,7 +1,7 @@
 import { HTMLPagesNav } from "@/components/HTMLPagesNav";
 import { getFeedContent } from "@/domain/getFeedContent";
-import { useAsyncFn } from "@/hooks/useFetch";
-import { usePreviousRoute } from "@/hooks/usePreviousRoute";
+import { useAsyncFn } from "~/hooks/useAsyncFn";
+import { usePreviousRoute } from "~/providers/PreviousRoute";
 import { useThemeContext } from "@/theme/ThemeProvider";
 import { HandleLinkData, HandleRouterLinkData } from "@/types";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
@@ -95,7 +95,7 @@ export default function FeedPage() {
         break-inside: avoid;
       }
 
-      .item[data-route-link*="${previousArticleUrl}"] {
+      .item[data-route-link*="${getRouteLink(previousArticleUrl)}"] {
         border-bottom-width: 5px;
       }
 

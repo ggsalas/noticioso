@@ -1,4 +1,4 @@
-import { View, Text } from "react-native";
+import { Text } from "react-native";
 import { useFeedsContext } from "@/providers/FeedsProvider";
 import { EditableFeedList } from "@/components/EditableFeedList";
 

@@ -1,4 +1,4 @@
-import { Link, Stack } from "expo-router";
+import { Link } from "expo-router";
 import { Pressable, Text, View, StyleSheet, ScrollView } from "react-native";
 import { useThemeContext } from "@/theme/ThemeProvider";
 
@@ -6,7 +6,7 @@ export default function Index() {
   const { s, changeFontSize } = useStyles();
 
   return (
-    <ScrollView>
+    <ScrollView style={s.scrollView}>
       <View style={s.main}>
         <View style={s.hero}>
           <Text style={s.heroText}>Welcome to El Noticioso</Text>
@@ -47,6 +47,9 @@ function useStyles() {
   const { colors, fonts, sizes } = theme;
 
   const style = StyleSheet.create({
+    scrollView: {
+      backgroundColor: colors.background,
+    },
     main: {
       display: "flex",
       flexDirection: "column",

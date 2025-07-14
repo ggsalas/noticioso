@@ -17,7 +17,7 @@ export type Colors = {
   backgroundDark_text: string;
 };
 
-const colors = {
+export const colors = {
   light: {
     text: "#000000",
     textGrey: "#999",

@@ -1,4 +1,3 @@
-import { Link, Stack } from "expo-router";
 import {
   Pressable,
   Text,
@@ -13,7 +12,7 @@ import { useEffect, useState } from "react";
 import { useFeedsContext } from "@/providers/FeedsProvider";
 
 export default function Import() {
-  const { s, changeFontSize } = useStyles();
+  const { s } = useStyles();
   const {
     importedFeeds,
     importError,

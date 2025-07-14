@@ -1,7 +1,7 @@
 import { XMLParser } from "fast-xml-parser";
 import sanitize from "safe-html";
 import { getFeedByUrl } from "./getFeeds";
-import type { FeedData, Item } from "~/types";
+import type { FeedData, FeedContentItem } from "~/types";
 
 export async function getFeedContent(url: string): Promise<FeedData> {
   try {
@@ -20,7 +20,7 @@ export async function getFeedContent(url: string): Promise<FeedData> {
 
     const items = feedContent.rss.channel.item
       // Only get news from today
-      ?.filter((item: Item) => {
+      ?.filter((item: FeedContentItem) => {
         const itemDate = new Date(Date.parse(item.pubDate));
         const isFromLast24Hs = itemDate.getTime() > date24HoursAgo.getTime();
         const isFromLast7days = itemDate.getTime() > date7daysAgo.getTime();
@@ -28,7 +28,7 @@ export async function getFeedContent(url: string): Promise<FeedData> {
         return feed?.oldestArticle === 7 ? isFromLast7days : isFromLast24Hs;
       })
       // Format description as plain text
-      .map((item: Item) => {
+      .map((item: FeedContentItem) => {
         if (isHTML(item.description)) {
           const description = sanitize(item.description, {
             allowedTags: [],
