@@ -178,7 +178,6 @@ function useStyles() {
     input: {
       fontSize: fonts.fontSizeSmall,
       height: sizes.s2,
-      lineHeight: sizes.s2,
       borderColor: colors.borderDark,
       color: colors.text,
       borderWidth: 0,
@@ -187,13 +186,12 @@ function useStyles() {
     },
     picker: {
       marginHorizontal: -16,
-      marginTop: -16,
-      height: sizes.s1_5,
-      lineHeight: sizes.s1_5,
+      marginTop: -10,
+      marginBottom: -16,
     },
     pickerItem: {
-      backgroundColor: "transparent",
-      color: colors.text,
+      padding: 0,
+      margin: 0,
     },
     formPicker: {
       display: "flex",
