@@ -48,6 +48,7 @@ export function Form({
           ref={nameRef}
           style={style.input}
           placeholder="Name"
+          placeholderTextColor={colors.textGrey}
           value={name}
           onChangeText={setName}
           editable={!loading}
@@ -55,6 +56,7 @@ export function Form({
         <TextInput
           style={style.input}
           placeholder="URL"
+          placeholderTextColor={colors.textGrey}
           value={url}
           onChangeText={setUrl}
           keyboardType="url"
@@ -177,21 +179,24 @@ function useStyles() {
     },
     input: {
       fontSize: fonts.fontSizeSmall,
-      height: sizes.s2,
       borderColor: colors.borderDark,
       color: colors.text,
       borderWidth: 0,
       borderBottomWidth: 1,
       paddingHorizontal: 0,
+      marginBottom: sizes.s0_50,
     },
     picker: {
       marginHorizontal: -16,
-      marginTop: -10,
-      marginBottom: -16,
+      marginTop: 0,
+      marginBottom: sizes.s0_50 * -1,
     },
     pickerItem: {
       padding: 0,
       margin: 0,
+      color: colors.text,
+      backgroundColor: colors.background,
+      lineHeight: sizes.s1,
     },
     formPicker: {
       display: "flex",
@@ -200,6 +205,7 @@ function useStyles() {
       borderBottomColor: colors.borderDark,
       borderBottomWidth: 1,
       paddingBottom: sizes.s0_50,
+      marginBottom: sizes.s0_50,
     },
     formPickerlabel: {
       color: colors.text,

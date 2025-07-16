@@ -15,6 +15,7 @@ export type Colors = {
   backgroundDark: string;
   backgroundLight: string;
   backgroundDark_text: string;
+  backgroundTransparent: string;
 };
 
 export const colors = {
@@ -30,6 +31,7 @@ export const colors = {
     backgroundDark: "#000000",
     backgroundLight: "#fafafa",
     backgroundDark_text: "#ffffff",
+    backgroundTransparent: "#ffffffB3",
   },
   dark: {
     text: "#ffffff",
@@ -43,6 +45,7 @@ export const colors = {
     backgroundDark: "#ffffff",
     backgroundLight: "#111111",
     backgroundDark_text: "#000000",
+    backgroundTransparent: "#000000B3",
   },
 };
 
