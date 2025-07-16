@@ -55,16 +55,7 @@ export const EditableFeedList = ({
   const onOpenModal = (feed: Feed) => setOpenModal(feed);
 
   return (
-    <View style={{ flex: 1 }}>
-      <Modal
-        isOpen={Boolean(openModal)}
-        onClose={() => setOpenModal(null)}
-        feed={openModal}
-        onSubmit={onSubmitItem}
-        onDelete={onDeleteItem}
-        loading={loading}
-      />
-
+    <>
       <GestureHandlerRootView style={{ flex: 1 }}>
         {feeds.length === 0 ? (
           <Text>No feeds has been added</Text>
@@ -85,8 +76,18 @@ export const EditableFeedList = ({
         )}
       </GestureHandlerRootView>
 
-      <FloatingButton onAddItem={handleAddFeeds} />
-    </View>
+      <View>
+        <FloatingButton onAddItem={handleAddFeeds} />
+        <Modal
+          isOpen={Boolean(openModal)}
+          onClose={() => setOpenModal(null)}
+          feed={openModal}
+          onSubmit={onSubmitItem}
+          onDelete={onDeleteItem}
+          loading={loading}
+        />
+      </View>
+    </>
   );
 };
 

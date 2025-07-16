@@ -54,7 +54,7 @@ function useStyles() {
       flex: 1,
       justifyContent: "center",
       alignItems: "center",
-      backgroundColor: "rgba(255,255,255,.8)",
+      backgroundColor: colors.backgroundTransparent,
     },
     modalView: {
       flex: 1,
