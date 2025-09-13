@@ -1,5 +1,5 @@
 import { XMLParser } from "fast-xml-parser";
-import * as sanitize from "safe-html";
+import sanitize from "safe-html";
 import { getFeedByUrl } from "./getFeeds";
 import type { FeedData, FeedContentItem } from "~/types";
 
