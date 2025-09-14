@@ -1,14 +1,14 @@
 import { Feed } from "~/types";
 
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { storageService } from "@/services/StorageService";
 
 const FEEDS_LIST_KEY = "@noticioso-feedList";
 
-export async function getFeeds(): Promise<Array<Feed> | undefined> {
-  const feedsData = await AsyncStorage.getItem(FEEDS_LIST_KEY);
+export async function getFeeds(): Promise<Feed[] | undefined> {
+  const feedsData = await storageService.getItem<Feed[]>(FEEDS_LIST_KEY);
 
   if (feedsData !== null) {
-    return JSON.parse(feedsData) as Feed[];
+    return feedsData;
   } else {
     throw new Error("No feeds found");
   }
@@ -21,13 +21,12 @@ export async function getFeedByUrl(url: string): Promise<Feed | undefined> {
 }
 
 export async function saveFeeds(feeds: Feed[]) {
-  const feedsData = JSON.stringify(feeds) ?? [];
-  await AsyncStorage.setItem(FEEDS_LIST_KEY, feedsData);
+  await storageService.setItem(FEEDS_LIST_KEY, feeds);
   return true;
 }
 
 export async function removeAllFeeds() {
-  await AsyncStorage.setItem(FEEDS_LIST_KEY, "");
+  await storageService.setItem(FEEDS_LIST_KEY, []);
 }
 
 export async function importFeeds(data: string) {
@@ -40,7 +39,7 @@ export async function importFeeds(data: string) {
     feeds[0].lang;
 
   if (hasItems && hasValues) {
-    await AsyncStorage.setItem(FEEDS_LIST_KEY, data);
+    await storageService.setItem(FEEDS_LIST_KEY, feeds);
 
     return true;
   } else {
