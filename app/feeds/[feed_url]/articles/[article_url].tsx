@@ -1,9 +1,8 @@
-import { getArticle } from "@/domain/getArticle";
-import { Stack, useLocalSearchParams } from "expo-router";
+import { articleService } from "@/services/ArticleService";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Text, StyleSheet, View } from "react-native";
 import { useAsyncFn } from "~/hooks/useAsyncFn";
 import { HTMLPagesNav } from "@/components/HTMLPagesNav/index";
-import { useRouter } from "expo-router";
 import { useThemeContext } from "@/theme/ThemeProvider";
 import { HandleLinkData } from "@/types";
 
@@ -12,12 +11,14 @@ export default function ArticlePage() {
   const router = useRouter();
   const { styles, colors, sizes } = useStyles();
 
-  const { data: article, loading, error } = useAsyncFn(getArticle, article_url);
+  const { data: article, loading, error } = useAsyncFn(articleService.getArticle, article_url as string);
 
   if (loading)
     return (
       <Text style={{ color: colors.text, padding: sizes.s1 }}>Loading...</Text>
     );
+
+  if (!article) return null;
 
   if ((!loading && !article) || error)
     return <Text>The app has failed to get article content</Text>;

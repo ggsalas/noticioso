@@ -1,12 +1,6 @@
 import { ReactNode, createContext, useContext, useState } from "react";
 import { useAsyncFn } from "../hooks/useAsyncFn";
-import {
-  createOrEditFeed,
-  deleteFeed,
-  getFeeds,
-  importFeeds,
-  saveFeeds,
-} from "@/domain/getFeeds";
+import { feedService } from "@/services/FeedService";
 import { Feed } from "@/types";
 
 type FeedsProviderProps = { children: ReactNode };
@@ -36,12 +30,12 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
     loading,
     error,
     runFn: refetchFeeds,
-  } = useAsyncFn<Feed[] | undefined>(getFeeds);
+  } = useAsyncFn(feedService.getFeeds, undefined);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const handleImportFeeds = async (feeds: string) => {
     try {
-      const success = await importFeeds(feeds);
+      const success = await feedService.importFeeds(feeds);
       setActionError(null);
 
       if (success) {
@@ -55,7 +49,7 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
 
   const handleUpdateFeeds = async (feeds: Feed[]) => {
     try {
-      const success = await saveFeeds(feeds);
+      const success = await feedService.saveFeeds(feeds);
       setActionError(null);
 
       if (success) {
@@ -69,7 +63,7 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
 
   const handleAddOrEditFeed = async (feed: Feed) => {
     try {
-      const success = await createOrEditFeed(feed);
+      const success = await feedService.createOrEditFeed(feed);
       setActionError(null);
 
       if (success) {
@@ -83,7 +77,7 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
 
   const handleDeleteFeed = async (feed: Feed) => {
     try {
-      const success = await deleteFeed(feed);
+      const success = await feedService.deleteFeed(feed);
       setActionError(null);
 
       console.log("feed deleted ", feed.name);

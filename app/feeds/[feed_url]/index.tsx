@@ -1,5 +1,5 @@
 import { HTMLPagesNav } from "@/components/HTMLPagesNav";
-import { getFeedContent } from "@/domain/getFeedContent";
+import { feedService } from "@/services/FeedService";
 import { useAsyncFn } from "~/hooks/useAsyncFn";
 import { usePreviousRoute } from "~/providers/PreviousRoute";
 import { useThemeContext } from "@/theme/ThemeProvider";
@@ -11,7 +11,7 @@ export default function FeedPage() {
   const { colors, fonts, sizes } = useStyles();
   const { feed_url } = useLocalSearchParams();
   const router = useRouter();
-  const { data, loading, error } = useAsyncFn(getFeedContent, feed_url);
+  const { data, loading, error } = useAsyncFn(feedService.getFeedContent, feed_url as string);
   const content = data?.rss?.channel?.item;
   const title = data?.rss?.channel?.title;
 
@@ -68,11 +68,11 @@ export default function FeedPage() {
   // TODO on big screens
   // ${ description ? '<div class="description">' + description + "</div>" : "" }
   const htmlItems =
-    content.length === 0
+    content?.length === 0
       ? '<div class="no-new-conent">No new content for this feed</div>'
       : content
-          .map(
-            ({ title, link, author }: any) => `
+        ?.map(
+          ({ title, link, author }: any) => `
             <div 
               class="item" 
               data-route-link="${getRouteLink(link)}" 
@@ -81,8 +81,8 @@ export default function FeedPage() {
               ${author ? '<p class="author">' + author + "</p>" : ""}
             </div>
           `
-          )
-          .join("");
+        )
+        .join("");
 
   const html = `
     <style>

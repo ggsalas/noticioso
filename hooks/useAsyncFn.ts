@@ -4,13 +4,12 @@ type UseAsyncFn<T> = {
   data: T | null;
   loading: boolean;
   error: string | null;
-
   runFn: () => Promise<void>;
 };
 
-export const useAsyncFn = <T>(
-  fn: (params?: any) => Promise<T>,
-  params?: any
+export const useAsyncFn = <T, K>(
+  fn: (arg: K) => Promise<T>,
+  arg: K
 ): UseAsyncFn<T> => {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
@@ -21,7 +20,7 @@ export const useAsyncFn = <T>(
     setError(null);
 
     try {
-      const result = await fn(params);
+      const result = await fn(arg);
       setData(result);
     } catch (err) {
       if (err instanceof Error) {
@@ -32,7 +31,7 @@ export const useAsyncFn = <T>(
     } finally {
       setLoading(false);
     }
-  }, [fn, params]);
+  }, [fn, arg]);
 
   useEffect(() => {
     runFn();
