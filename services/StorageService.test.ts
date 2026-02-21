@@ -1,70 +1,111 @@
-import { storageService } from "./StorageService";
+import { StorageService } from "./StorageService";
+import type { AsyncStorageStatic } from "@react-native-async-storage/async-storage";
+
+const mockStorage = {
+  getItem: jest.fn(),
+  setItem: jest.fn(),
+  removeItem: jest.fn(),
+  clear: jest.fn(),
+};
+
+const storageService = new StorageService(
+  mockStorage as unknown as AsyncStorageStatic,
+);
 
 describe("StorageService", () => {
-  beforeEach(async () => {
-    await storageService.clear();
+  beforeEach(() => {
+    jest.clearAllMocks();
   });
 
-  afterEach(async () => {
-    await storageService.clear();
+  describe("getItem", () => {
+    it("should return parsed JSON value", async () => {
+      mockStorage.getItem.mockResolvedValue(JSON.stringify({ name: "Test" }));
+
+      const result = await storageService.getItem<{ name: string }>("key");
+
+      expect(mockStorage.getItem).toHaveBeenCalledWith("key");
+      expect(result).toEqual({ name: "Test" });
+    });
+
+    it("should return null for non-existent key", async () => {
+      mockStorage.getItem.mockResolvedValue(null);
+
+      const result = await storageService.getItem("key");
+
+      expect(result).toBeNull();
+    });
+
+    it("should return raw value if JSON parse fails", async () => {
+      mockStorage.getItem.mockResolvedValue("not-json");
+
+      const result = await storageService.getItem<string>("key");
+
+      expect(result).toBe("not-json");
+    });
+
+    it("should throw if storage fails", async () => {
+      mockStorage.getItem.mockRejectedValue(new Error("storage error"));
+
+      await expect(storageService.getItem("key")).rejects.toThrow(
+        'Failed to get item with key "key"',
+      );
+    });
   });
 
-  test("should store and retrieve a string value", async () => {
-    const key = "testString";
-    const value = "Hello World";
-    
-    await storageService.setItem(key, value);
-    const result = await storageService.getItem<string>(key);
-    
-    expect(result).toBe(value);
+  describe("setItem", () => {
+    it("should serialize and store value", async () => {
+      mockStorage.setItem.mockResolvedValue(undefined);
+
+      await storageService.setItem("key", { name: "Test" });
+
+      expect(mockStorage.setItem).toHaveBeenCalledWith(
+        "key",
+        JSON.stringify({ name: "Test" }),
+      );
+    });
+
+    it("should throw if storage fails", async () => {
+      mockStorage.setItem.mockRejectedValue(new Error("storage error"));
+
+      await expect(storageService.setItem("key", "value")).rejects.toThrow(
+        'Failed to set item with key "key"',
+      );
+    });
   });
 
-  test("should store and retrieve an object value", async () => {
-    const key = "testObject";
-    const value = { name: "Test", count: 42 };
-    
-    await storageService.setItem(key, value);
-    const result = await storageService.getItem<typeof value>(key);
-    
-    expect(result).toEqual(value);
+  describe("removeItem", () => {
+    it("should call removeItem on storage", async () => {
+      mockStorage.removeItem.mockResolvedValue(undefined);
+
+      await storageService.removeItem("key");
+
+      expect(mockStorage.removeItem).toHaveBeenCalledWith("key");
+    });
+
+    it("should throw if storage fails", async () => {
+      mockStorage.removeItem.mockRejectedValue(new Error("storage error"));
+
+      await expect(storageService.removeItem("key")).rejects.toThrow(
+        'Failed to remove item with key "key"',
+      );
+    });
   });
 
-  test("should return null for non-existent key", async () => {
-    const result = await storageService.getItem("nonexistent");
-    expect(result).toBeNull();
-  });
+  describe("clear", () => {
+    it("should call clear on storage", async () => {
+      mockStorage.clear.mockResolvedValue(undefined);
 
-  test("should remove an item", async () => {
-    const key = "testRemove";
-    const value = "test value";
-    
-    await storageService.setItem(key, value);
-    await storageService.removeItem(key);
-    const result = await storageService.getItem(key);
-    
-    expect(result).toBeNull();
-  });
+      await storageService.clear();
 
-  test("should clear all items", async () => {
-    await storageService.setItem("key1", "value1");
-    await storageService.setItem("key2", "value2");
-    
-    await storageService.clear();
-    
-    const result1 = await storageService.getItem("key1");
-    const result2 = await storageService.getItem("key2");
-    
-    expect(result1).toBeNull();
-    expect(result2).toBeNull();
-  });
+      expect(mockStorage.clear).toHaveBeenCalled();
+    });
 
-  test("should handle array values", async () => {
-    const key = "testArray";
-    const value = [1, 2, 3, "test"];
-    
-    await storageService.setItem(key, value);
-    const result = await storageService.getItem<typeof value>(key);
-    
-    expect(result).toEqual(value);
+    it("should throw if storage fails", async () => {
+      mockStorage.clear.mockRejectedValue(new Error("storage error"));
+
+      await expect(storageService.clear()).rejects.toThrow(
+        "Failed to clear storage",
+      );
+    });
   });
 });

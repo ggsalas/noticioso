@@ -1,18 +1,21 @@
-import { feedService } from "./FeedService";
-import { storageService } from "./StorageService";
+import { FeedService } from "./FeedService";
+import { StorageService } from "./StorageService";
 
-// Mock StorageService
-jest.mock("./StorageService", () => ({
-  storageService: {
-    getItem: jest.fn(),
-    setItem: jest.fn(),
-  },
-}));
+const mockStorage = {
+  getItem: jest.fn(),
+  setItem: jest.fn(),
+  removeItem: jest.fn(),
+  clear: jest.fn(),
+};
+
+const mockFetch = jest.fn();
+global.fetch = mockFetch;
+
+const feedService = new FeedService(mockStorage as unknown as StorageService);
 
 describe("FeedService", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    global.fetch = jest.fn();
   });
 
   describe("getFeedContent", () => {
@@ -45,22 +48,22 @@ describe("FeedService", () => {
           </channel>
         </rss>`;
 
-      (storageService.getItem as jest.Mock).mockResolvedValue([mockFeed]);
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
+      mockStorage.getItem.mockResolvedValue([mockFeed]);
+      mockFetch.mockResolvedValueOnce({
         ok: true,
         text: () => Promise.resolve(mockRssXml),
       });
 
       const result = await feedService.getFeedContent("https://example.com/rss");
 
-      expect(global.fetch).toHaveBeenCalledWith("https://example.com/rss", { method: "GET" });
+      expect(mockFetch).toHaveBeenCalledWith("https://example.com/rss", { method: "GET" });
       expect(result.date).toBeInstanceOf(Date);
       expect(result.rss).toBeDefined();
     });
 
     it("should throw error on failed fetch", async () => {
-      (storageService.getItem as jest.Mock).mockResolvedValue([]);
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
+      mockStorage.getItem.mockResolvedValue([]);
+      mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 404,
         statusText: "Not Found",
@@ -79,16 +82,16 @@ describe("FeedService", () => {
         { id: "2", name: "Feed 2", url: "https://example2.com", oldestArticle: 7 as const, lang: "es" as const },
       ];
 
-      (storageService.getItem as jest.Mock).mockResolvedValue(mockFeeds);
+      mockStorage.getItem.mockResolvedValue(mockFeeds);
 
       const result = await feedService.getFeeds();
 
-      expect(storageService.getItem).toHaveBeenCalledWith("@noticioso-feedList");
+      expect(mockStorage.getItem).toHaveBeenCalledWith("@noticioso-feedList");
       expect(result).toEqual(mockFeeds);
     });
 
     it("should throw error when no feeds found", async () => {
-      (storageService.getItem as jest.Mock).mockResolvedValue(null);
+      mockStorage.getItem.mockResolvedValue(null);
 
       await expect(feedService.getFeeds()).rejects.toThrow("No feeds found");
     });
@@ -104,13 +107,13 @@ describe("FeedService", () => {
         lang: "en" as const,
       };
 
-      (storageService.getItem as jest.Mock).mockResolvedValue([]);
-      (storageService.setItem as jest.Mock).mockResolvedValue(undefined);
+      mockStorage.getItem.mockResolvedValue([]);
+      mockStorage.setItem.mockResolvedValue(undefined);
 
       const result = await feedService.createOrEditFeed(newFeed);
 
       expect(result).toBe(true);
-      expect(storageService.setItem).toHaveBeenCalledWith("@noticioso-feedList", [newFeed]);
+      expect(mockStorage.setItem).toHaveBeenCalledWith("@noticioso-feedList", [newFeed]);
     });
 
     it("should throw error for invalid feed", async () => {
@@ -122,7 +125,7 @@ describe("FeedService", () => {
         lang: "en" as const,
       };
 
-      (storageService.getItem as jest.Mock).mockResolvedValue([]);
+      mockStorage.getItem.mockResolvedValue([]);
 
       await expect(feedService.createOrEditFeed(invalidFeed)).rejects.toThrow("Feed cannot be added");
     });
@@ -136,13 +139,13 @@ describe("FeedService", () => {
       ];
       const feedToDelete = existingFeeds[0];
 
-      (storageService.getItem as jest.Mock).mockResolvedValue(existingFeeds);
-      (storageService.setItem as jest.Mock).mockResolvedValue(undefined);
+      mockStorage.getItem.mockResolvedValue(existingFeeds);
+      mockStorage.setItem.mockResolvedValue(undefined);
 
       const result = await feedService.deleteFeed(feedToDelete);
 
       expect(result).toBe(true);
-      expect(storageService.setItem).toHaveBeenCalledWith("@noticioso-feedList", [existingFeeds[1]]);
+      expect(mockStorage.setItem).toHaveBeenCalledWith("@noticioso-feedList", [existingFeeds[1]]);
     });
   });
 });

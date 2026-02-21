@@ -1,11 +1,14 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import type { AsyncStorageStatic } from "@react-native-async-storage/async-storage";
 
 export class StorageService {
+  constructor(private asyncStorage: AsyncStorageStatic = AsyncStorage) {}
+
   async getItem<T>(key: string): Promise<T | null> {
     let jsonValue: string | null;
 
     try {
-      jsonValue = await AsyncStorage.getItem(key);
+      jsonValue = await this.asyncStorage.getItem(key);
     } catch (error) {
       throw new Error(`Failed to get item with key "${key}": ${error}`);
     }
@@ -26,7 +29,7 @@ export class StorageService {
   async setItem<T>(key: string, value: T): Promise<void> {
     try {
       const jsonValue = JSON.stringify(value);
-      await AsyncStorage.setItem(key, jsonValue);
+      await this.asyncStorage.setItem(key, jsonValue);
     } catch (error) {
       throw new Error(`Failed to set item with key "${key}": ${error}`);
     }
@@ -34,7 +37,7 @@ export class StorageService {
 
   async removeItem(key: string): Promise<void> {
     try {
-      await AsyncStorage.removeItem(key);
+      await this.asyncStorage.removeItem(key);
     } catch (error) {
       throw new Error(`Failed to remove item with key "${key}": ${error}`);
     }
@@ -42,11 +45,11 @@ export class StorageService {
 
   async clear(): Promise<void> {
     try {
-      await AsyncStorage.clear();
+      await this.asyncStorage.clear();
     } catch (error) {
       throw new Error(`Failed to clear storage: ${error}`);
     }
   }
 }
 
-export const storageService = new StorageService();
+export const storageService = new StorageService(AsyncStorage);

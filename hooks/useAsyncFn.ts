@@ -9,7 +9,7 @@ type UseAsyncFn<T> = {
 
 export const useAsyncFn = <T, K>(
   fn: (arg: K) => Promise<T>,
-  arg: K
+  arg: K,
 ): UseAsyncFn<T> => {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
@@ -24,7 +24,7 @@ export const useAsyncFn = <T, K>(
       setData(result);
     } catch (err) {
       if (err instanceof Error) {
-        setError(err.message); // Capture the error message
+        setError(err.message);
       } else {
         setError("An unknown error occurred");
       }

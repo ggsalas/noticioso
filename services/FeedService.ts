@@ -1,6 +1,6 @@
 import { XMLParser } from "fast-xml-parser";
 import sanitize from "safe-html";
-import { storageService } from "./StorageService";
+import { storageService, StorageService } from "./StorageService";
 import type { Feed, FeedData, FeedContentItem } from "~/types";
 
 const FEEDS_LIST_KEY = "@noticioso-feedList";
@@ -8,7 +8,7 @@ const FEEDS_LIST_KEY = "@noticioso-feedList";
 export class FeedService {
   private xmlParser: XMLParser;
 
-  constructor() {
+  constructor(private storage: StorageService = storageService) {
     this.xmlParser = new XMLParser();
   }
 
@@ -58,7 +58,7 @@ export class FeedService {
   };
 
   getFeeds = async (_?: undefined): Promise<Feed[] | undefined> => {
-    const feedsData = await storageService.getItem<Feed[]>(FEEDS_LIST_KEY);
+    const feedsData = await this.storage.getItem<Feed[]>(FEEDS_LIST_KEY);
 
     if (feedsData !== null) {
       return feedsData;
@@ -129,7 +129,7 @@ export class FeedService {
       feeds[0].lang;
 
     if (hasItems && hasValues) {
-      await storageService.setItem(FEEDS_LIST_KEY, feeds);
+      await this.storage.setItem(FEEDS_LIST_KEY, feeds);
       return true;
     } else {
       throw new Error("Data has incorrect format");
@@ -137,11 +137,11 @@ export class FeedService {
   };
 
   removeAllFeeds = async (): Promise<void> => {
-    await storageService.setItem(FEEDS_LIST_KEY, []);
+    await this.storage.setItem(FEEDS_LIST_KEY, []);
   };
 
   saveFeeds = async (feeds: Feed[]): Promise<boolean> => {
-    await storageService.setItem(FEEDS_LIST_KEY, feeds);
+    await this.storage.setItem(FEEDS_LIST_KEY, feeds);
     return true;
   };
 
@@ -157,4 +157,4 @@ export class FeedService {
   }
 }
 
-export const feedService = new FeedService();
+export const feedService = new FeedService(storageService);
