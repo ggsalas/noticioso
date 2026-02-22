@@ -40,7 +40,6 @@ export default function FeedFormScreen() {
       <Stack.Screen
         options={{
           title: isNew ? "New Feed" : "Edit Feed",
-          headerShown: true,
         }}
       />
       <Form
