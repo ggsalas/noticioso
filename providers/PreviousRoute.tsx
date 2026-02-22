@@ -20,8 +20,8 @@ const PreviousRouteContext = createContext<RouteProp<
   string
 > | null>(null);
 
-export function usePreviousRoute() {
-  return useContext(PreviousRouteContext);
+export function usePreviousRoute<T extends Record<string, any> = Record<string, any>>() {
+  return useContext(PreviousRouteContext) as Route<string, T> | null;
 }
 
 function getActiveRoute(

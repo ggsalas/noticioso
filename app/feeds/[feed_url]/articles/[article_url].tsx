@@ -7,11 +7,15 @@ import { useThemeContext } from "@/theme/ThemeProvider";
 import { HandleLinkData } from "@/types";
 
 export default function ArticlePage() {
-  const { article_url } = useLocalSearchParams();
+  const { article_url } = useLocalSearchParams<{ article_url: string }>();
   const router = useRouter();
   const { styles, colors, sizes } = useStyles();
 
-  const { data: article, loading, error } = useAsyncFn(articleService.getArticle, article_url as string);
+  const {
+    data: article,
+    loading,
+    error,
+  } = useAsyncFn(articleService.getArticle, article_url);
 
   if (loading)
     return (

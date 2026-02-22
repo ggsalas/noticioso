@@ -13,9 +13,8 @@ export default function Feeds() {
   const router = useRouter();
   const [resetNavigation, setResetNavigation] = useState(1);
 
-  const previousRoute = usePreviousRoute();
-  const previousArticleUrl = (previousRoute?.params as { feed_url: string })
-    ?.feed_url;
+  const previousRoute = usePreviousRoute<{ feed_url: string }>();
+  const previousArticleUrl = previousRoute?.params?.feed_url;
 
   const getRouteLink = (link: string) => `/feeds/${encodeURIComponent(link)}`;
 
@@ -69,9 +68,7 @@ export default function Feeds() {
         break-inside: avoid;
       }
 
-      .item[data-route-link*="${getRouteLink(previousArticleUrl)}"] {
-        border-bottom-width: 5px;
-      }
+      ${previousArticleUrl ? `.item[data-route-link*="${getRouteLink(previousArticleUrl)}"] { border-bottom-width: 5px; }` : ""}
 
       .title {
         color: ${colors.text};

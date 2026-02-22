@@ -9,15 +9,17 @@ import { Text } from "react-native";
 
 export default function FeedPage() {
   const { colors, fonts, sizes } = useStyles();
-  const { feed_url } = useLocalSearchParams();
+  const { feed_url } = useLocalSearchParams<{ feed_url: string }>();
   const router = useRouter();
-  const { data, loading, error } = useAsyncFn(feedService.getFeedContent, feed_url as string);
+  const { data, loading, error } = useAsyncFn(
+    feedService.getFeedContent,
+    feed_url,
+  );
   const content = data?.rss?.channel?.item;
   const title = data?.rss?.channel?.title;
 
-  const previousRoute = usePreviousRoute();
-  const previousArticleUrl = (previousRoute?.params as { article_url: string })
-    ?.article_url;
+  const previousRoute = usePreviousRoute<{ article_url: string }>();
+  const previousArticleUrl = previousRoute?.params?.article_url;
 
   const actions = {
     top: {
@@ -48,7 +50,7 @@ export default function FeedPage() {
 
   const getRouteLink = (link: string) =>
     `/feeds/${encodeURIComponent(
-      feed_url as string
+      feed_url,
     )}/articles/${encodeURIComponent(link)}`;
 
   if (loading)
@@ -71,8 +73,8 @@ export default function FeedPage() {
     content?.length === 0
       ? '<div class="no-new-conent">No new content for this feed</div>'
       : content
-        ?.map(
-          ({ title, link, author }: any) => `
+          ?.map(
+            ({ title, link, author }: any) => `
             <div 
               class="item" 
               data-route-link="${getRouteLink(link)}" 
@@ -80,9 +82,9 @@ export default function FeedPage() {
               <h3 class="title">${title}</h3>
               ${author ? '<p class="author">' + author + "</p>" : ""}
             </div>
-          `
-        )
-        .join("");
+          `,
+          )
+          .join("");
 
   const html = `
     <style>
@@ -95,9 +97,7 @@ export default function FeedPage() {
         break-inside: avoid;
       }
 
-      .item[data-route-link*="${getRouteLink(previousArticleUrl)}"] {
-        border-bottom-width: 5px;
-      }
+      ${previousArticleUrl ? `.item[data-route-link*="${getRouteLink(previousArticleUrl)}"] { border-bottom-width: 5px; }` : ""}
 
       .title {
         color: ${colors.text};
