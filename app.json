@@ -4,7 +4,7 @@
     "slug": "noticioso-android",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/noticioso-icon-500px.png",
+    "icon": "./assets/images/adaptive-icon.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -13,7 +13,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/noticioso-icon-500px.png",
+        "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "package": "com.ggsalas.noticiosoandroid"
@@ -21,7 +21,7 @@
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/noticioso-icon-500px.png"
+      "favicon": "./assets/images/adaptive-icon.png"
     },
     "plugins": [
       "expo-router",
@@ -29,9 +29,15 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/noticioso-icon-500px.png",
+          "image": "./assets/images/splash-icon-light.png",
+          "backgroundColor": "#ffffff",
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "imageWidth": 400,
+          "dark": {
+            "image": "./assets/images/splash-icon-dark.png",
+            "backgroundColor": "#000000",
+            "imageWidth": 400
+          }
         }
       ]
     ],
