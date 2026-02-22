@@ -1,9 +1,11 @@
 import { articleService } from "./ArticleService";
 
+const mockFetch = jest.fn();
+global.fetch = mockFetch;
+
 describe("ArticleService", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    global.fetch = jest.fn();
   });
 
   describe("getArticle", () => {
@@ -20,14 +22,14 @@ describe("ArticleService", () => {
           </body>
         </html>`;
 
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
+      mockFetch.mockResolvedValueOnce({
         ok: true,
         text: () => Promise.resolve(mockHtml),
       });
 
       const result = await articleService.getArticle("https://example.com/article");
 
-      expect(global.fetch).toHaveBeenCalledWith("https://example.com/article");
+      expect(mockFetch).toHaveBeenCalledWith("https://example.com/article");
       expect(result).not.toBeNull();
       if (result) {
         expect(typeof result.title).toBe("string");
@@ -47,7 +49,7 @@ describe("ArticleService", () => {
           </body>
         </html>`;
 
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
+      mockFetch.mockResolvedValueOnce({
         ok: true,
         text: () => Promise.resolve(mockHtml),
       });
@@ -62,7 +64,7 @@ describe("ArticleService", () => {
     });
 
     it("should throw error on failed fetch", async () => {
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
+      mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 404,
         statusText: "Not Found",
@@ -74,7 +76,7 @@ describe("ArticleService", () => {
     });
 
     it("should handle network errors", async () => {
-      (global.fetch as jest.Mock).mockRejectedValueOnce(new Error("Network error"));
+      mockFetch.mockRejectedValueOnce(new Error("Network error"));
 
       await expect(
         articleService.getArticle("https://example.com/network-error")
