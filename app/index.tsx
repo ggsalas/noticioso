@@ -5,7 +5,7 @@ import { useFeedsContext } from "@/providers/FeedsProvider";
 
 export default function Index() {
   const { style } = useStyles();
-  const { feeds, loading, error } = useFeedsContext();
+  const { feeds, loading } = useFeedsContext();
 
   if (!loading && feeds && feeds?.length > 0) {
     return <Redirect href="/feeds" />;
@@ -20,7 +20,9 @@ export default function Index() {
           <Text style={style.text}>Loading...</Text>
         ) : (
           <>
-            <Text style={style.text}>Hi, this is "El Noticioso"</Text>
+            <Text style={style.text}>
+              Hi, this is &rdquo;El Noticioso&rdquo;
+            </Text>
 
             <Link href="/config" asChild>
               <Pressable style={style.button}>

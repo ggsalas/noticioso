@@ -92,7 +92,7 @@ export function HTMLPagesNavComponent({
           }
         } else if (eventName === SWIPE_PREVIOUS) {
           // Prevent overflow at start
-          if (scrollLeft != 0) {
+          if (scrollLeft !== 0) {
             return scrollLeft - viewportWidth;
           }
         }
@@ -105,8 +105,8 @@ export function HTMLPagesNavComponent({
       setPages(() => {
         const amount = Math.ceil(articleWidth / viewportWidth);
         const current = updatedScrollLeft / viewportWidth + 1;
-        const isFirst = updatedScrollLeft == 0;
-        const isLast = amount == current;
+        const isFirst = updatedScrollLeft === 0;
+        const isLast = amount === current;
 
         return {
           amount,
@@ -240,6 +240,4 @@ function useStyles(windowWidth: number) {
   return { styles, theme };
 }
 
-export const HTMLPagesNav = memo((props: HTMLPaesNavProps) => (
-  <HTMLPagesNavComponent {...props} />
-));
+export const HTMLPagesNav = memo(HTMLPagesNavComponent);

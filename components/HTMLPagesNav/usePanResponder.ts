@@ -1,4 +1,4 @@
-import { RefObject, useEffect, useRef, useState } from "react";
+import { RefObject, useRef } from "react";
 import { Animated, PanResponder } from "react-native";
 import WebView from "react-native-webview";
 import { getWebViewEvents } from "./webViewEvents";
@@ -7,7 +7,7 @@ type UseAnimationsParams = {
   name: string;
   width: number;
   height: number;
-  webviewRef: RefObject<WebView>;
+  webviewRef: RefObject<WebView | null>;
 };
 
 type Direction = "HORIZONTAL" | "VERTICAL" | null;
@@ -30,23 +30,6 @@ export function usePanResponder({
 
   const { SWIPE_PREVIOUS, SWIPE_NEXT, SWIPE_BOTTOM, SWIPE_TOP } =
     getWebViewEvents(name);
-
-  // Seems not neccesary
-  // // animate opacity on load
-  // useEffect(() => {
-  //   Animated.timing(opacity, {
-  //     toValue: 1,
-  //     duration: OPACITY_TRANSITION,
-  //     delay: LOAD_TIME,
-  //     useNativeDriver: true,
-  //   }).start(() => {
-  //     Animated.timing(opacity, {
-  //       toValue: 1,
-  //       duration: 0,
-  //       useNativeDriver: true,
-  //     }).start();
-  //   });
-  // }, [opacity]);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -216,7 +199,7 @@ export function usePanResponder({
           isAnimating.current = false;
         }
       },
-    })
+    }),
   ).current;
 
   return { panResponder, pan, labelsOpacity, opaqueLoader, opacity };

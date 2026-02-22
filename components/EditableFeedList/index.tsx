@@ -7,7 +7,7 @@ import { FloatingButton } from "./FloatingButton";
 import { View, Text } from "react-native";
 import { Modal } from "./Modal";
 
-type EditableFeedList = {
+type EditableFeedListProps = {
   feeds: Feed[];
   loading: boolean;
   setFeeds: (feeds: Feed[]) => Promise<boolean | undefined>;
@@ -21,7 +21,7 @@ export const EditableFeedList = ({
   setFeeds,
   addOrEditFeed,
   deleteFeed,
-}: EditableFeedList) => {
+}: EditableFeedListProps) => {
   // To avoid swipe back the elements while waiting store response
   const [localFeeds, setLocalFeeds] = useOptimistic(feeds);
   const listRef = useRef<FlatList<Feed>>(null);
@@ -92,7 +92,7 @@ export const EditableFeedList = ({
 };
 
 function useOptimistic(
-  feeds: Feed[]
+  feeds: Feed[],
 ): [Feed[], Dispatch<SetStateAction<Feed[]>>] {
   const [localFeeds, setLocalFeeds] = useState<Feed[]>(feeds);
 

@@ -18,10 +18,10 @@ type FeedsContextType = {
 
 const FeedsContext = createContext<FeedsContextType>({
   getFeeds: () => null,
-  importFeeds: async ([]) => true,
-  updateFeeds: async ([]) => true,
-  addOrEditFeed: async ({}) => true,
-  deleteFeed: async ({}) => true,
+  importFeeds: async (_feeds: string) => true,
+  updateFeeds: async (_feeds: Feed[]) => true,
+  addOrEditFeed: async (_feed: Feed) => true,
+  deleteFeed: async (_feed: Feed) => true,
 });
 
 export function FeedsProvider({ children }: FeedsProviderProps) {

@@ -2,12 +2,12 @@ import { useThemeContext } from "@/theme/ThemeProvider";
 import { MaterialIcons } from "@expo/vector-icons";
 import { Dimensions, Pressable, StyleSheet } from "react-native";
 
-type FloatingButton = {
+type FloatingButtonProps = {
   onAddItem: () => void;
   disabled?: boolean;
 };
 
-export function FloatingButton({ onAddItem, disabled }: FloatingButton) {
+export function FloatingButton({ onAddItem, disabled }: FloatingButtonProps) {
   const { style, colors } = useStyles();
 
   return (
