@@ -1,58 +1,26 @@
-import { Feed, NewFeed } from "@/types";
+import { Feed } from "@/types";
 import { Dispatch, SetStateAction, useEffect, useRef, useState } from "react";
 import DraggableFlatList from "react-native-draggable-flatlist";
 import { FlatList, GestureHandlerRootView } from "react-native-gesture-handler";
 import { Item } from "./Item";
 import { FloatingButton } from "./FloatingButton";
 import { View, Text } from "react-native";
-import { Modal } from "./Modal";
 
 type EditableFeedListProps = {
   feeds: Feed[];
-  loading: boolean;
   setFeeds: (feeds: Feed[]) => Promise<boolean | undefined>;
-  addOrEditFeed: (feed: Feed) => Promise<boolean | undefined>;
-  deleteFeed: (feed: Feed) => Promise<boolean | undefined>;
+  onAddItem: () => void;
+  onEditItem: (feed: Feed) => void;
 };
 
 export const EditableFeedList = ({
   feeds,
-  loading,
   setFeeds,
-  addOrEditFeed,
-  deleteFeed,
+  onAddItem,
+  onEditItem,
 }: EditableFeedListProps) => {
-  // To avoid swipe back the elements while waiting store response
   const [localFeeds, setLocalFeeds] = useOptimistic(feeds);
   const listRef = useRef<FlatList<Feed>>(null);
-  const [openModal, setOpenModal] = useState<NewFeed | null>();
-
-  const onSubmitItem = async (feed: Feed) => {
-    const succeed = await addOrEditFeed(feed);
-    if (succeed) {
-      setOpenModal(null);
-    }
-  };
-
-  const onDeleteItem = async (feed: Feed) => {
-    const succeed = await deleteFeed(feed);
-    if (succeed) {
-      setOpenModal(null);
-    }
-  };
-
-  const handleAddFeeds = () => {
-    setOpenModal({
-      id: Date.now().toString(),
-      lang: "es",
-      name: "",
-      url: "",
-      oldestArticle: 1,
-      isNew: true,
-    });
-  };
-
-  const onOpenModal = (feed: Feed) => setOpenModal(feed);
 
   return (
     <>
@@ -66,7 +34,7 @@ export const EditableFeedList = ({
             scrollToOverflowEnabled
             showsHorizontalScrollIndicator
             data={localFeeds}
-            renderItem={(props) => <Item {...{ ...props, onOpenModal }} />}
+            renderItem={(props) => <Item {...{ ...props, onOpenModal: onEditItem }} />}
             keyExtractor={(item) => item.id}
             onDragEnd={({ data }) => {
               setLocalFeeds(data);
@@ -77,15 +45,7 @@ export const EditableFeedList = ({
       </GestureHandlerRootView>
 
       <View>
-        <FloatingButton onAddItem={handleAddFeeds} />
-        <Modal
-          isOpen={Boolean(openModal)}
-          onClose={() => setOpenModal(null)}
-          feed={openModal}
-          onSubmit={onSubmitItem}
-          onDelete={onDeleteItem}
-          loading={loading}
-        />
+        <FloatingButton onAddItem={onAddItem} />
       </View>
     </>
   );
