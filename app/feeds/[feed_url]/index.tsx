@@ -21,33 +21,6 @@ export default function FeedPage() {
   const previousRoute = usePreviousRoute<{ article_url: string }>();
   const previousArticleUrl = previousRoute?.params?.article_url;
 
-  const actions = {
-    top: {
-      label: "Nothing",
-      action: () => null,
-    },
-    bottom: {
-      label: "Feeds List",
-      action: () => router.back(),
-    },
-    first: {
-      label: "Feeds List",
-      action: () => router.back(),
-    },
-    last: {
-      label: "Feeds List",
-      action: () => router.back(),
-    },
-  };
-
-  const handleLink = ({ href }: HandleLinkData) => {
-    alert(`Unhandled link: ${href}`);
-  };
-
-  const handleRouterLink = ({ path }: HandleRouterLinkData) => {
-    router.navigate(path);
-  };
-
   const getRouteLink = (link: string) =>
     `/feeds/${encodeURIComponent(
       feed_url,
@@ -141,9 +114,30 @@ export default function FeedPage() {
       <HTMLPagesNav
         name="feed"
         html={html}
-        actions={actions}
-        handleLink={handleLink}
-        handleRouterLink={handleRouterLink}
+        actions={{
+          top: {
+            label: "Nothing",
+            action: () => null,
+          },
+          bottom: {
+            label: "Feeds List",
+            action: () => router.back(),
+          },
+          first: {
+            label: "Feeds List",
+            action: () => router.back(),
+          },
+          last: {
+            label: "Feeds List",
+            action: () => router.back(),
+          },
+        }}
+        handleLink={({ href }: HandleLinkData) => {
+          alert(`Unhandled link: ${href}`);
+        }}
+        handleRouterLink={({ path }: HandleRouterLinkData) => {
+          router.navigate(path);
+        }}
       />
     </>
   );

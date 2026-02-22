@@ -27,29 +27,6 @@ export default function ArticlePage() {
   if ((!loading && !article) || error)
     return <Text>The app has failed to get article content</Text>;
 
-  const actions = {
-    top: {
-      label: "Nothing",
-      action: () => router.back(),
-    },
-    bottom: {
-      label: "Article List",
-      action: () => router.back(),
-    },
-    first: {
-      label: "Article List",
-      action: () => router.back(),
-    },
-    last: {
-      label: "Article List",
-      action: () => router.back(),
-    },
-  };
-
-  const handleLink = ({ href }: HandleLinkData) => {
-    alert(`Unhandled link: ${href}`);
-  };
-
   const getContent = () => {
     let content = `<h1 class="_title_">${article.title}</h1>`;
 
@@ -83,8 +60,27 @@ export default function ArticlePage() {
       <HTMLPagesNav
         name="article"
         html={getContent()}
-        actions={actions}
-        handleLink={handleLink}
+        actions={{
+          top: {
+            label: "Nothing",
+            action: () => router.back(),
+          },
+          bottom: {
+            label: "Article List",
+            action: () => router.back(),
+          },
+          first: {
+            label: "Article List",
+            action: () => router.back(),
+          },
+          last: {
+            label: "Article List",
+            action: () => router.back(),
+          },
+        }}
+        handleLink={({ href }: HandleLinkData) => {
+          alert(`Unhandled link: ${href}`);
+        }}
       />
     </>
   );

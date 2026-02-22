@@ -19,7 +19,9 @@ export class FeedService {
       // Fetch and parse RSS content
       const res = await fetch(url, { method: "GET" });
       if (!res.ok) {
-        throw new Error(`Failed to fetch feed from ${url}: ${res.status} ${res.statusText}`);
+        throw new Error(
+          `Failed to fetch feed from ${url}: ${res.status} ${res.statusText}`,
+        );
       }
 
       const data = await res.text();
@@ -98,7 +100,7 @@ export class FeedService {
       };
 
       return await this.saveFeeds(getUpdatedFeeds());
-    } catch (e) {
+    } catch {
       throw new Error("Feed cannot be added");
     }
   };
@@ -114,7 +116,7 @@ export class FeedService {
 
       const updatedFeeds = feeds.filter((f) => f.id !== feed.id);
       return await this.saveFeeds(updatedFeeds);
-    } catch (e) {
+    } catch {
       throw new Error("Feed cannot be deleted");
     }
   };

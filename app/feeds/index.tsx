@@ -18,29 +18,6 @@ export default function Feeds() {
 
   const getRouteLink = (link: string) => `/feeds/${encodeURIComponent(link)}`;
 
-  const actions = {
-    top: {
-      label: "Nothing",
-      action: () => null,
-    },
-    bottom: {
-      label: "Page 1",
-      action: () => setResetNavigation((val) => val + 1),
-    },
-    first: {
-      label: "Page 1",
-      action: () => setResetNavigation((val) => val + 1),
-    },
-    last: {
-      label: "Page 1",
-      action: () => setResetNavigation((val) => val + 1),
-    },
-  };
-
-  const handleRouterLink = ({ path }: HandleRouterLinkData) => {
-    router.navigate(path);
-  };
-
   const htmlItems =
     feeds?.length === 0
       ? '<div class="no-new-conent">No feeds found</div>'
@@ -53,7 +30,7 @@ export default function Feeds() {
             >
               <h3 class="title">${name}</h3>
             </div>
-          `
+          `,
           )
           .join("");
 
@@ -126,8 +103,27 @@ export default function Feeds() {
         key={resetNavigation}
         name="feed"
         html={html}
-        actions={actions}
-        handleRouterLink={handleRouterLink}
+        actions={{
+          top: {
+            label: "Nothing",
+            action: () => null,
+          },
+          bottom: {
+            label: "Page 1",
+            action: () => setResetNavigation((val) => val + 1),
+          },
+          first: {
+            label: "Page 1",
+            action: () => setResetNavigation((val) => val + 1),
+          },
+          last: {
+            label: "Page 1",
+            action: () => setResetNavigation((val) => val + 1),
+          },
+        }}
+        handleRouterLink={({ path }: HandleRouterLinkData) => {
+          router.navigate(path);
+        }}
       />
     </>
   );
