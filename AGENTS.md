@@ -11,7 +11,21 @@
 - React Native Expo app with TypeScript
 - Expo Router for navigation (`app/` directory)
 - Path aliases: `@/*` and `~/*` point to project root
-- Components in `components/`, domain logic in `domain/`, providers in `providers/`
+- Components in `components/`, services in `services/`, providers in `providers/`
+
+## Service Layer Architecture
+Services encapsulate all business logic and data access. Each service is a class with a singleton export:
+
+```
+services/
+  StorageService.ts   -- AsyncStorage abstraction, receives AsyncStorage via constructor
+  FeedService.ts      -- RSS fetch, XML parse, feed CRUD, receives StorageService via constructor
+  ArticleService.ts   -- HTML fetch, Readability extraction, lazy image handling
+```
+
+- Dependencies are injected via constructor with a default value (e.g. `new FeedService(storageService)`)
+- The singleton export is used in the app (e.g. `feedService`)
+- Tests instantiate the class directly with mock dependencies instead of using `jest.mock()`
 
 ## Code Style
 - TypeScript with strict mode enabled
