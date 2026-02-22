@@ -1,5 +1,5 @@
 import { HTMLPagesNav } from "@/components/HTMLPagesNav";
-import { getFeedContent } from "@/domain/getFeedContent";
+import { feedService } from "@/services/FeedService";
 import { useAsyncFn } from "~/hooks/useAsyncFn";
 import { usePreviousRoute } from "~/providers/PreviousRoute";
 import { useThemeContext } from "@/theme/ThemeProvider";
@@ -9,46 +9,21 @@ import { Text } from "react-native";
 
 export default function FeedPage() {
   const { colors, fonts, sizes } = useStyles();
-  const { feed_url } = useLocalSearchParams();
+  const { feed_url } = useLocalSearchParams<{ feed_url: string }>();
   const router = useRouter();
-  const { data, loading, error } = useAsyncFn(getFeedContent, feed_url);
+  const { data, loading, error } = useAsyncFn(
+    feedService.getFeedContent,
+    feed_url,
+  );
   const content = data?.rss?.channel?.item;
   const title = data?.rss?.channel?.title;
 
-  const previousRoute = usePreviousRoute();
-  const previousArticleUrl = (previousRoute?.params as { article_url: string })
-    ?.article_url;
-
-  const actions = {
-    top: {
-      label: "Nothing",
-      action: () => null,
-    },
-    bottom: {
-      label: "Feeds List",
-      action: () => router.back(),
-    },
-    first: {
-      label: "Feeds List",
-      action: () => router.back(),
-    },
-    last: {
-      label: "Feeds List",
-      action: () => router.back(),
-    },
-  };
-
-  const handleLink = ({ href }: HandleLinkData) => {
-    alert(`Unhandled link: ${href}`);
-  };
-
-  const handleRouterLink = ({ path }: HandleRouterLinkData) => {
-    router.navigate(path);
-  };
+  const previousRoute = usePreviousRoute<{ article_url: string }>();
+  const previousArticleUrl = previousRoute?.params?.article_url;
 
   const getRouteLink = (link: string) =>
     `/feeds/${encodeURIComponent(
-      feed_url as string
+      feed_url,
     )}/articles/${encodeURIComponent(link)}`;
 
   if (loading)
@@ -68,10 +43,10 @@ export default function FeedPage() {
   // TODO on big screens
   // ${ description ? '<div class="description">' + description + "</div>" : "" }
   const htmlItems =
-    content.length === 0
+    content?.length === 0
       ? '<div class="no-new-conent">No new content for this feed</div>'
       : content
-          .map(
+          ?.map(
             ({ title, link, author }: any) => `
             <div 
               class="item" 
@@ -80,7 +55,7 @@ export default function FeedPage() {
               <h3 class="title">${title}</h3>
               ${author ? '<p class="author">' + author + "</p>" : ""}
             </div>
-          `
+          `,
           )
           .join("");
 
@@ -95,9 +70,7 @@ export default function FeedPage() {
         break-inside: avoid;
       }
 
-      .item[data-route-link*="${getRouteLink(previousArticleUrl)}"] {
-        border-bottom-width: 5px;
-      }
+      ${previousArticleUrl ? `.item[data-route-link*="${getRouteLink(previousArticleUrl)}"] { border-bottom-width: 5px; }` : ""}
 
       .title {
         color: ${colors.text};
@@ -141,9 +114,30 @@ export default function FeedPage() {
       <HTMLPagesNav
         name="feed"
         html={html}
-        actions={actions}
-        handleLink={handleLink}
-        handleRouterLink={handleRouterLink}
+        actions={{
+          top: {
+            label: "Nothing",
+            action: () => null,
+          },
+          bottom: {
+            label: "Feeds List",
+            action: () => router.back(),
+          },
+          first: {
+            label: "Feeds List",
+            action: () => router.back(),
+          },
+          last: {
+            label: "Feeds List",
+            action: () => router.back(),
+          },
+        }}
+        handleLink={({ href }: HandleLinkData) => {
+          alert(`Unhandled link: ${href}`);
+        }}
+        handleRouterLink={({ path }: HandleRouterLinkData) => {
+          router.navigate(path);
+        }}
       />
     </>
   );

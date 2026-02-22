@@ -1,4 +1,5 @@
 import { Readability } from "@mozilla/readability";
+import { router } from "expo-router";
 
 type ReadabilityArticle = ReturnType<Readability["parse"]>;
 
@@ -63,8 +64,8 @@ export type Pages = {
   amount: number;
   current: number;
   scrollLeft: number;
-  isFirst: Boolean;
-  isLast: Boolean;
+  isFirst: boolean;
+  isLast: boolean;
 };
 
 export type HTMLPagesNavActionItem = {
@@ -84,5 +85,5 @@ export type HandleLinkData = {
 };
 
 export type HandleRouterLinkData = {
-  path: string;
+  path: Parameters<typeof router.navigate>[0];
 };

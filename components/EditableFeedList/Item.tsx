@@ -1,7 +1,6 @@
 import { useThemeContext } from "@/theme/ThemeProvider";
 import { Feed } from "@/types";
 import { MaterialIcons } from "@expo/vector-icons";
-import { Dispatch, SetStateAction, useState } from "react";
 import { Text, TouchableOpacity, StyleSheet, View } from "react-native";
 
 type ItemProps = {
@@ -57,10 +56,6 @@ function useStyles(isActive: boolean) {
       fontWeight: "bold",
       lineHeight: fonts.lineHeightMinimal,
       color: isActive ? colors.backgroundDark_text : colors.text,
-    },
-    form: {
-      height: 20,
-      backgroundColor: "red",
     },
   });
 

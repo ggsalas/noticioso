@@ -1,49 +1,31 @@
-import { getArticle } from "@/domain/getArticle";
-import { Stack, useLocalSearchParams } from "expo-router";
+import { articleService } from "@/services/ArticleService";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Text, StyleSheet, View } from "react-native";
 import { useAsyncFn } from "~/hooks/useAsyncFn";
 import { HTMLPagesNav } from "@/components/HTMLPagesNav/index";
-import { useRouter } from "expo-router";
 import { useThemeContext } from "@/theme/ThemeProvider";
 import { HandleLinkData } from "@/types";
 
 export default function ArticlePage() {
-  const { article_url } = useLocalSearchParams();
+  const { article_url } = useLocalSearchParams<{ article_url: string }>();
   const router = useRouter();
   const { styles, colors, sizes } = useStyles();
 
-  const { data: article, loading, error } = useAsyncFn(getArticle, article_url);
+  const {
+    data: article,
+    loading,
+    error,
+  } = useAsyncFn(articleService.getArticle, article_url);
 
   if (loading)
     return (
       <Text style={{ color: colors.text, padding: sizes.s1 }}>Loading...</Text>
     );
 
+  if (!article) return null;
+
   if ((!loading && !article) || error)
     return <Text>The app has failed to get article content</Text>;
-
-  const actions = {
-    top: {
-      label: "Nothing",
-      action: () => router.back(),
-    },
-    bottom: {
-      label: "Article List",
-      action: () => router.back(),
-    },
-    first: {
-      label: "Article List",
-      action: () => router.back(),
-    },
-    last: {
-      label: "Article List",
-      action: () => router.back(),
-    },
-  };
-
-  const handleLink = ({ href }: HandleLinkData) => {
-    alert(`Unhandled link: ${href}`);
-  };
 
   const getContent = () => {
     let content = `<h1 class="_title_">${article.title}</h1>`;
@@ -78,8 +60,27 @@ export default function ArticlePage() {
       <HTMLPagesNav
         name="article"
         html={getContent()}
-        actions={actions}
-        handleLink={handleLink}
+        actions={{
+          top: {
+            label: "Nothing",
+            action: () => router.back(),
+          },
+          bottom: {
+            label: "Article List",
+            action: () => router.back(),
+          },
+          first: {
+            label: "Article List",
+            action: () => router.back(),
+          },
+          last: {
+            label: "Article List",
+            action: () => router.back(),
+          },
+        }}
+        handleLink={({ href }: HandleLinkData) => {
+          alert(`Unhandled link: ${href}`);
+        }}
       />
     </>
   );

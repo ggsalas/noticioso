@@ -7,7 +7,7 @@ import {
 } from "react";
 import { Theme, getTheme } from "./theme";
 import { useColorScheme } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { storageService } from "@/services/StorageService";
 
 type ThemeContextType = {
   theme: Theme;
@@ -35,12 +35,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     async function syncStore() {
       try {
-        const storedData = await AsyncStorage.getItem(
+        const baseFontSizeStorage = await storageService.getItem<number>(
           "@noticioso-baseFontSize"
-        );
-        const baseFontSizeStorage = storedData
-          ? Number(storedData)
-          : DEFAULT_FONT_SIZE;
+        ) ?? DEFAULT_FONT_SIZE;
 
         // Storage replace current state
         if (baseFontSizeStorage !== theme.fonts.baseFontSize) {
@@ -61,12 +58,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         : theme.fonts.baseFontSize - 2;
 
     try {
-      await AsyncStorage.setItem(
+      await storageService.setItem(
         "@noticioso-baseFontSize",
-        JSON.stringify(newSize)
+        newSize
       );
     } catch (e) {
-      console.log("error on save to AsyncStorage", e);
+      console.log("error on save to storage", e);
     }
 
     dispatch({ type: "update", payload: newSize });

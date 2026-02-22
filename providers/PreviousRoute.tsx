@@ -10,6 +10,7 @@ import {
 import {
   NavigationState,
   ParamListBase,
+  PartialState,
   Route,
   RouteProp,
 } from "@react-navigation/native";
@@ -19,18 +20,21 @@ const PreviousRouteContext = createContext<RouteProp<
   string
 > | null>(null);
 
-export function usePreviousRoute() {
-  return useContext(PreviousRouteContext);
+export function usePreviousRoute<T extends Record<string, any> = Record<string, any>>() {
+  return useContext(PreviousRouteContext) as Route<string, T> | null;
 }
 
-function getActiveRoute(state: NavigationState): Route<string> {
-  let route = state.routes[state.index];
-  while (route.state) {
-    route = (route.state as NavigationState).routes[
-      (route.state as NavigationState).index
-    ];
+function getActiveRoute(
+  state: NavigationState | PartialState<NavigationState>,
+): Route<string> | undefined {
+  let route = state.routes[state.index ?? 0];
+  while (route?.state) {
+    const nestedState = route.state as
+      | NavigationState
+      | PartialState<NavigationState>;
+    route = nestedState.routes[nestedState.index ?? 0];
   }
-  return route;
+  return route as Route<string> | undefined;
 }
 
 export function PreviousRouteProvider({ children }: { children: ReactNode }) {
@@ -47,13 +51,15 @@ export function PreviousRouteProvider({ children }: { children: ReactNode }) {
     if (currentRouteRef.current === null) {
       const state = navigationRef.getState();
       if (state) {
-        currentRouteRef.current = getActiveRoute(state);
+        currentRouteRef.current = getActiveRoute(state) ?? null;
       }
     }
 
     const unsubscribe = navigationRef.addListener("state", (e) => {
       const state = e.data.state;
-      const newCurrentRoute = getActiveRoute(state);
+      if (!state) return;
+
+      const newCurrentRoute = getActiveRoute(state) ?? null;
       setPreviousRoute(currentRouteRef.current);
       currentRouteRef.current = newCurrentRoute;
     });

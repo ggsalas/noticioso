@@ -13,34 +13,10 @@ export default function Feeds() {
   const router = useRouter();
   const [resetNavigation, setResetNavigation] = useState(1);
 
-  const previousRoute = usePreviousRoute();
-  const previousArticleUrl = (previousRoute?.params as { feed_url: string })
-    ?.feed_url;
+  const previousRoute = usePreviousRoute<{ feed_url: string }>();
+  const previousArticleUrl = previousRoute?.params?.feed_url;
 
   const getRouteLink = (link: string) => `/feeds/${encodeURIComponent(link)}`;
-
-  const actions = {
-    top: {
-      label: "Nothing",
-      action: () => null,
-    },
-    bottom: {
-      label: "Page 1",
-      action: () => setResetNavigation((val) => val + 1),
-    },
-    first: {
-      label: "Page 1",
-      action: () => setResetNavigation((val) => val + 1),
-    },
-    last: {
-      label: "Page 1",
-      action: () => setResetNavigation((val) => val + 1),
-    },
-  };
-
-  const handleRouterLink = ({ path }: HandleRouterLinkData) => {
-    router.navigate(path);
-  };
 
   const htmlItems =
     feeds?.length === 0
@@ -54,7 +30,7 @@ export default function Feeds() {
             >
               <h3 class="title">${name}</h3>
             </div>
-          `
+          `,
           )
           .join("");
 
@@ -69,9 +45,7 @@ export default function Feeds() {
         break-inside: avoid;
       }
 
-      .item[data-route-link*="${getRouteLink(previousArticleUrl)}"] {
-        border-bottom-width: 5px;
-      }
+      ${previousArticleUrl ? `.item[data-route-link*="${getRouteLink(previousArticleUrl)}"] { border-bottom-width: 5px; }` : ""}
 
       .title {
         color: ${colors.text};
@@ -129,8 +103,27 @@ export default function Feeds() {
         key={resetNavigation}
         name="feed"
         html={html}
-        actions={actions}
-        handleRouterLink={handleRouterLink}
+        actions={{
+          top: {
+            label: "Nothing",
+            action: () => null,
+          },
+          bottom: {
+            label: "Page 1",
+            action: () => setResetNavigation((val) => val + 1),
+          },
+          first: {
+            label: "Page 1",
+            action: () => setResetNavigation((val) => val + 1),
+          },
+          last: {
+            label: "Page 1",
+            action: () => setResetNavigation((val) => val + 1),
+          },
+        }}
+        handleRouterLink={({ path }: HandleRouterLinkData) => {
+          router.navigate(path);
+        }}
       />
     </>
   );
