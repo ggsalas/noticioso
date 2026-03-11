@@ -4,7 +4,7 @@ import { useFeedsContext } from "@/providers/FeedsProvider";
 import { Form } from "@/components/EditableFeedList/Form";
 import { Feed, NewFeed } from "@/types";
 
-export default function FeedFormScreen() {
+export default function EditFeed() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const isNew = !id;
   const router = useRouter();
@@ -19,7 +19,7 @@ export default function FeedFormScreen() {
         oldestArticle: 1,
         isNew: true,
       }
-    : ((feeds?.find((f) => f.id === id) as NewFeed) ?? null);
+    : ((feeds?.find((f) => f.id.trim() === id.trim()) as NewFeed) ?? null);
 
   if (!feed) return <Text>Feed not found</Text>;
 

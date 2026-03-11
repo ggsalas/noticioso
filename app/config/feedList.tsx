@@ -4,7 +4,7 @@ import { useFeedsContext } from "@/providers/FeedsProvider";
 import { EditableFeedList } from "@/components/EditableFeedList";
 import { Feed } from "@/types";
 
-export default function AddFeed() {
+export default function FeedList() {
   const { feeds, loading, updateFeeds } = useFeedsContext();
   const router = useRouter();
 
@@ -14,8 +14,8 @@ export default function AddFeed() {
     <EditableFeedList
       feeds={feeds ?? []}
       setFeeds={updateFeeds}
-      onAddItem={() => router.push("/feedForm")}
-      onEditItem={(feed: Feed) => router.push(`/feedForm?id=${feed.id}`)}
+      onAddItem={() => router.push("/editFeed")}
+      onEditItem={(feed: Feed) => router.push(`/editFeed?id=${feed.id}`)}
     />
   );
 }

@@ -45,6 +45,7 @@
     "react-native-draggable-flatlist": "^4.0.1",
     "react-native-gesture-handler": "~2.24.0",
     "react-native-html-parser": "^0.1.0",
+    "react-native-keyboard-aware-scroll-view": "^0.9.5",
     "react-native-reader": "^0.9.4",
     "react-native-reanimated": "~3.17.4",
     "react-native-render-html": "^6.3.4",

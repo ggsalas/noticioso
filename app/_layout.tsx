@@ -73,7 +73,7 @@ export default function RootLayout() {
               <Stack.Screen name="index" options={{ title: "Home" }} />
               <Stack.Screen name="+not-found" />
               <Stack.Screen name="config" />
-              <Stack.Screen name="feedForm" />
+              <Stack.Screen name="editFeed" />
             </Stack>
           </FeedsProvider>
         </PreviousRouteProvider>

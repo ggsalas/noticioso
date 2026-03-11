@@ -2,6 +2,7 @@ import { useThemeContext } from "@/theme/ThemeProvider";
 import { Feed, NewFeed } from "@/types";
 import React, { useEffect, useRef, useState } from "react";
 import {
+  KeyboardAvoidingView,
   View,
   TextInput,
   StyleSheet,
@@ -9,8 +10,10 @@ import {
   Text,
   Alert,
   TextStyle,
+  InteractionManager,
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type FormProps = {
   item?: NewFeed | null;
@@ -20,13 +23,7 @@ type FormProps = {
   onCancel: () => void;
 };
 
-export function Form({
-  item,
-  loading,
-  onSubmit,
-  onCancel,
-  onDelete,
-}: FormProps) {
+export function Form({ item, loading, onSubmit, onDelete }: FormProps) {
   const { isNew, ...feed } = item ?? ({} as NewFeed);
   const { style, colors } = useStyles();
   const [name, setName] = useState(feed.name);
@@ -36,14 +33,22 @@ export function Form({
   const nameRef = useRef<TextInput>(null);
 
   useEffect(() => {
-    setTimeout(() => {
-      nameRef.current?.focus();
-    }, 100);
+    const task = InteractionManager.runAfterInteractions(() => {
+      setTimeout(() => {
+        nameRef.current?.focus();
+      }, 300);
+    });
+    return () => task.cancel();
   }, []);
 
   return (
-    <View style={style.formContainer}>
+    <KeyboardAvoidingView
+      style={style.formContainer}
+      behavior="height"
+      keyboardVerticalOffset={56}
+    >
       <View style={style.form}>
+        <Text style={style.formPickerlabel}>Feed name</Text>
         <TextInput
           ref={nameRef}
           style={style.input}
@@ -53,6 +58,8 @@ export function Form({
           onChangeText={setName}
           editable={!loading}
         />
+
+        <Text style={style.formPickerlabel}>Feed URL</Text>
         <TextInput
           style={style.input}
           placeholder="URL"
@@ -62,8 +69,9 @@ export function Form({
           keyboardType="url"
           editable={!loading}
         />
+
         <View style={style.formPicker}>
-          <Text style={style.formPickerlabel}>Feed language:</Text>
+          <Text style={style.formPickerlabel}>Feed language</Text>
           <Picker
             style={style.picker}
             selectedValue={lang}
@@ -71,7 +79,7 @@ export function Form({
             prompt="Feed language"
             placeholder="Feed language"
             enabled={!loading}
-            mode="dropdown"
+            mode="dialog"
             dropdownIconColor={colors.text}
             dropdownIconRippleColor={colors.background}
           >
@@ -81,7 +89,7 @@ export function Form({
         </View>
 
         <View style={style.formPicker}>
-          <Text style={style.formPickerlabel}>Articles from: </Text>
+          <Text style={style.formPickerlabel}>Articles from</Text>
           <Picker
             style={style.picker}
             selectedValue={oldestArticle}
@@ -89,19 +97,38 @@ export function Form({
             prompt="Read artickes from"
             placeholder="Read artickes from"
             enabled={!loading}
-            mode="dropdown"
+            mode="dialog"
             dropdownIconColor={colors.text}
             dropdownIconRippleColor={colors.background}
           >
-            <Picker.Item label="Today" value="1" style={style.pickerItem} />
-            <Picker.Item label="Last Week" value="7" style={style.pickerItem} />
+            <Picker.Item label="Today" value={1} style={style.pickerItem} />
+            <Picker.Item label="Last Week" value={7} style={style.pickerItem} />
           </Picker>
         </View>
       </View>
 
       <View style={style.actions}>
+        {!isNew && (
+          <Pressable
+            style={style.buttonTransparent}
+            disabled={loading}
+            onPress={() => {
+              Alert.alert(
+                "Delete Feed",
+                `The feed "${feed.name}" will be removed`,
+                [
+                  { text: "Cancel" },
+                  { text: "DELETE", onPress: () => onDelete(feed) },
+                ],
+              );
+            }}
+          >
+            <Text style={style.buttonTransparentText}>Delete</Text>
+          </Pressable>
+        )}
+
         <Pressable
-          style={style.button}
+          style={style.saveButton}
           onPress={() =>
             onSubmit({
               ...feed,
@@ -115,46 +142,21 @@ export function Form({
         >
           <Text style={style.buttonText}>Save Feed</Text>
         </Pressable>
-
-        <Pressable
-          style={style.buttonWithBorder}
-          onPress={onCancel}
-          disabled={loading}
-        >
-          <Text style={style.buttonWithBorderText}>Cancel</Text>
-        </Pressable>
-
-        {!isNew && (
-          <Pressable
-            style={style.buttonTransparent}
-            disabled={loading}
-            onPress={() => {
-              Alert.alert(
-                "Delete Feed",
-                `The feed "${feed.name}" will be removed`,
-                [
-                  { text: "Cancel" },
-                  { text: "DELETE", onPress: () => onDelete(feed) },
-                ]
-              );
-            }}
-          >
-            <Text style={style.buttonTransparentText}>Delete</Text>
-          </Pressable>
-        )}
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
 function useStyles() {
   const { theme } = useThemeContext();
   const { colors, fonts, sizes } = theme;
+  const insets = useSafeAreaInsets();
 
   const button = {
     marginTop: sizes.s1,
     paddingVertical: sizes.s0_50,
     paddingHorizontal: sizes.s1,
+    borderWidth: 2,
   };
   const buttonText: TextStyle = {
     fontSize: fonts.marginP,
@@ -166,8 +168,11 @@ function useStyles() {
     formContainer: {
       flex: 1,
       flexDirection: "column",
-      height: "100%",
       justifyContent: "space-between",
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      paddingBottom: insets.bottom,
+      padding: sizes.s1,
     },
     form: {
       display: "flex",
@@ -175,7 +180,10 @@ function useStyles() {
     },
     actions: {
       display: "flex",
-      flexDirection: "column",
+      flexDirection: "row",
+      justifyContent: "space-between",
+      paddingBottom: sizes.s2,
+      gap: sizes.s1,
     },
     input: {
       fontSize: fonts.fontSizeSmall,
@@ -184,12 +192,13 @@ function useStyles() {
       borderWidth: 0,
       borderBottomWidth: 1,
       paddingHorizontal: 0,
-      marginBottom: sizes.s0_50,
+      marginBottom: sizes.s1,
     },
     picker: {
+      borderWidth: 4,
+      color: colors.text,
       marginHorizontal: -16,
-      marginTop: 0,
-      marginBottom: sizes.s0_50 * -1,
+      marginBottom: -14,
     },
     pickerItem: {
       padding: 0,
@@ -201,18 +210,18 @@ function useStyles() {
     formPicker: {
       display: "flex",
       flexDirection: "column",
-      marginTop: sizes.s0_50,
       borderBottomColor: colors.borderDark,
       borderBottomWidth: 1,
       paddingBottom: sizes.s0_50,
-      marginBottom: sizes.s0_50,
+      marginBottom: sizes.s1,
     },
     formPickerlabel: {
       color: colors.text,
     },
-    button: {
+    saveButton: {
       ...button,
       backgroundColor: colors.backgroundDark,
+      flex: 1,
     },
     buttonText: {
       ...buttonText,

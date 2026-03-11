@@ -32,7 +32,7 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="addFeed"
+        name="feedList"
         options={{
           title: "Handle Feeds",
           tabBarIcon: ({ color }) => (
