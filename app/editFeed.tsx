@@ -5,7 +5,11 @@ import { Form } from "@/components/EditableFeedList/Form";
 import { Feed, NewFeed } from "@/types";
 
 export default function EditFeed() {
-  const { id } = useLocalSearchParams<{ id?: string }>();
+  const { id, prefillUrl, prefillName } = useLocalSearchParams<{
+    id?: string;
+    prefillName?: string;
+    prefillUrl?: string;
+  }>();
   const isNew = !id;
   const router = useRouter();
   const { feeds, loading, addOrEditFeed, deleteFeed } = useFeedsContext();
@@ -14,8 +18,8 @@ export default function EditFeed() {
     ? {
         id: Date.now().toString(),
         lang: "es",
-        name: "",
-        url: "",
+        name: prefillName ?? "",
+        url: prefillUrl ?? "",
         oldestArticle: 1,
         isNew: true,
       }

@@ -14,7 +14,7 @@ export default function FeedList() {
     <EditableFeedList
       feeds={feeds ?? []}
       setFeeds={updateFeeds}
-      onAddItem={() => router.push("/editFeed")}
+      onAddItem={() => router.push("/searchFeedUrl")}
       onEditItem={(feed: Feed) => router.push(`/editFeed?id=${feed.id}`)}
     />
   );

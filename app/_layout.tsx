@@ -74,6 +74,7 @@ export default function RootLayout() {
               <Stack.Screen name="+not-found" />
               <Stack.Screen name="config" />
               <Stack.Screen name="editFeed" />
+              <Stack.Screen name="searchFeedUrl" />
             </Stack>
           </FeedsProvider>
         </PreviousRouteProvider>
