@@ -6,6 +6,7 @@ import { useThemeContext } from "@/theme/ThemeProvider";
 import { HTMLPagesNav } from "@/components/HTMLPagesNav";
 import { usePreviousRoute } from "~/providers/PreviousRoute";
 import { useFeedsContext } from "@/providers/FeedsProvider";
+import { MaterialIcons } from "@expo/vector-icons";
 
 export default function Feeds() {
   const { colors, fonts, sizes, style } = useStyles();
@@ -88,11 +89,18 @@ export default function Feeds() {
     <>
       <Stack.Screen
         options={{
-          title: "Feeds",
+          title: "Noticioso",
           headerRight: () => (
-            <Link href="/config" asChild>
-              <Pressable style={style.rightButton}>
-                <Text style={style.rightButtonText}>Config</Text>
+            <Link href="/config/feedList" asChild>
+              <Pressable
+                style={style.rightButton}
+                android_ripple={{ color: colors.textGrey, borderless: true }}
+              >
+                <MaterialIcons
+                  name="settings"
+                  size={sizes.s1}
+                  color={colors.text}
+                />
               </Pressable>
             </Link>
           ),

@@ -22,17 +22,7 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen
-        name="index"
-        options={{
-          title: "Settings",
-          tabBarIcon: ({ color }) => (
-            <MaterialIcons name="settings" size={24} color={color} />
-          ),
-          headerShown: false,
-        }}
-      />
-      <Tabs.Screen
-        name="addFeed"
+        name="feedList"
         options={{
           title: "Handle Feeds",
           tabBarIcon: ({ color }) => (
@@ -42,11 +32,11 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="import"
+        name="settings"
         options={{
-          title: "Import Feeds",
+          title: "Settings",
           tabBarIcon: ({ color }) => (
-            <MaterialIcons name="file-copy" size={24} color={color} />
+            <MaterialIcons name="settings" size={24} color={color} />
           ),
           headerShown: false,
         }}

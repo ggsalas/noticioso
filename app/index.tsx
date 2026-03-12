@@ -24,9 +24,9 @@ export default function Index() {
               Hi, this is &rdquo;El Noticioso&rdquo;
             </Text>
 
-            <Link href="/config" asChild>
+            <Link href="/searchFeedUrl" asChild>
               <Pressable style={style.button}>
-                <Text style={style.buttonText}>Configure to start</Text>
+                <Text style={style.buttonText}>Add your first feed</Text>
               </Pressable>
             </Link>
           </>

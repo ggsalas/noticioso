@@ -72,7 +72,9 @@ export default function RootLayout() {
             >
               <Stack.Screen name="index" options={{ title: "Home" }} />
               <Stack.Screen name="+not-found" />
-              <Stack.Screen name="config" />
+              <Stack.Screen name="config" options={{ title: "Settings" }} />
+              <Stack.Screen name="editFeed" />
+              <Stack.Screen name="searchFeedUrl" />
             </Stack>
           </FeedsProvider>
         </PreviousRouteProvider>
