@@ -59,7 +59,9 @@ export function Form({ item, loading, onSubmit, onDelete }: FormProps) {
           editable={!loading}
         />
 
-        <Text style={style.formPickerlabel}>Feed URL</Text>
+        <Text style={style.formPickerlabel} numberOfLines={3}>
+          Feed URL
+        </Text>
         <TextInput
           style={style.input}
           placeholder="URL"

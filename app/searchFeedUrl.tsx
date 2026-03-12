@@ -1,5 +1,5 @@
 import { Stack, useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   View,
   TextInput,
@@ -9,6 +9,7 @@ import {
   FlatList,
   ActivityIndicator,
 } from "react-native";
+import { MaterialIcons } from "@expo/vector-icons";
 import { useThemeContext } from "@/theme/ThemeProvider";
 import {
   feedDiscoveryService,
@@ -18,20 +19,24 @@ import {
 export default function SearchFeedUrl() {
   const { style, colors } = useStyles();
   const router = useRouter();
-  const [url, setUrl] = useState("");
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<DiscoveredFeed[] | null>(null);
 
+  const lastSearchRef = useRef("");
+  const inputRef = useRef<TextInput>(null);
+
   const handleSearch = async () => {
-    if (!url.trim()) return;
+    if (!search.trim()) return;
 
     setLoading(true);
     setError(null);
     setResults(null);
+    lastSearchRef.current = search.trim();
 
     try {
-      const feeds = await feedDiscoveryService.discoverFeeds(url.trim());
+      const feeds = await feedDiscoveryService.discoverFeeds(search.trim());
       setResults(feeds);
     } catch (err) {
       setError(`Could not find feeds: ${err}`);
@@ -47,71 +52,90 @@ export default function SearchFeedUrl() {
   };
 
   const handleAddFeedManually = () => {
-    router.push(`/editFeed?prefillUrl=${encodeURIComponent(url.trim())}`);
+    router.push(`/editFeed?prefillName=${encodeURIComponent(search)}`);
   };
 
   return (
     <>
-      <Stack.Screen options={{ title: "Search Feed URL" }} />
-      <View style={style.container}>
-        <Text>Search feeds by website URL</Text>
-        <View style={style.searchRow}>
-          <TextInput
-            style={style.input}
-            placeholder="example.com"
-            placeholderTextColor={colors.textGrey}
-            value={url}
-            onChangeText={setUrl}
-            keyboardType="url"
-            autoCapitalize="none"
-            autoCorrect={false}
-            onSubmitEditing={handleSearch}
-            returnKeyType="search"
-            editable={!loading}
-          />
+      <Stack.Screen options={{ title: "Search Feeds" }} />
+
+      <FlatList
+        style={style.mainContainer}
+        data={results ?? []}
+        keyExtractor={(item) => item.url}
+        renderItem={({ item }) => (
           <Pressable
-            style={[style.button, loading && style.buttonDisabled]}
-            onPress={handleSearch}
-            disabled={loading}
+            style={style.resultItem}
+            onPress={() => handleSelectFeed(item)}
           >
-            <Text style={style.buttonText}>Search</Text>
+            <Text style={style.resultTitle}>{item.title}</Text>
+            <Text style={style.resultUrl}>{item.url}</Text>
           </Pressable>
-        </View>
-
-        {loading && (
-          <ActivityIndicator style={style.loading} color={colors.text} />
         )}
-
-        {error && <Text style={style.error}>{error}</Text>}
-
-        {results !== null && results.length === 0 && !loading && (
-          <Text style={style.empty}>No feeds found for this URL.</Text>
-        )}
-
-        {results && results.length > 0 && (
-          <FlatList
-            data={results}
-            keyExtractor={(item) => item.url}
-            renderItem={({ item }) => (
+        stickyHeaderIndices={[0]}
+        ListHeaderComponent={
+          <View style={style.search}>
+            <Text>Search content or enter a URL</Text>
+            <View style={style.searchRow}>
+              <TextInput
+                ref={inputRef}
+                style={style.input}
+                placeholder="URL or search term..."
+                placeholderTextColor={colors.textGrey}
+                value={search}
+                onChangeText={setSearch}
+                autoCapitalize="none"
+                autoCorrect={false}
+                onSubmitEditing={handleSearch}
+                returnKeyType="search"
+                editable={!loading}
+              />
               <Pressable
-                style={style.resultItem}
-                onPress={() => handleSelectFeed(item)}
+                style={[style.searchIcon, loading && style.searchIconDisabled]}
+                onPress={
+                  results !== null && search.trim() === lastSearchRef.current
+                    ? () => {
+                        setSearch("");
+                        setResults(null);
+                        setError(null);
+                        inputRef.current?.focus();
+                      }
+                    : handleSearch
+                }
+                disabled={loading}
               >
-                <Text style={style.resultTitle}>{item.title}</Text>
-                <Text style={style.resultUrl} numberOfLines={3}>
-                  {item.url}
-                </Text>
+                <MaterialIcons
+                  name={
+                    results !== null && search.trim() === lastSearchRef.current
+                      ? "close"
+                      : "search"
+                  }
+                  size={22}
+                  color={colors.text}
+                />
               </Pressable>
-            )}
-          />
-        )}
+            </View>
 
-        <Pressable style={[style.buttonWhite]} onPress={handleAddFeedManually}>
-          <Text style={style.buttonWhiteText}>
-            Or add your feed url yourself
-          </Text>
-        </Pressable>
-      </View>
+            {loading && (
+              <ActivityIndicator style={style.loading} color={colors.text} />
+            )}
+
+            {error && <Text style={style.error}>{error}</Text>}
+
+            {results !== null && results.length === 0 && !loading && (
+              <Text style={style.empty}>No feeds found.</Text>
+            )}
+          </View>
+        }
+        ListFooterComponent={
+          <Pressable
+            style={[style.buttonWhite]}
+            onPress={handleAddFeedManually}
+          >
+            <Text style={style.buttonWhiteText}>Add feed URL manually</Text>
+          </Pressable>
+        }
+      />
     </>
   );
 }
@@ -121,49 +145,48 @@ function useStyles() {
   const { colors, fonts, sizes } = theme;
 
   const style = StyleSheet.create({
-    container: {
+    mainContainer: {
       flex: 1,
+      paddingHorizontal: sizes.s1,
       backgroundColor: colors.background,
-      padding: sizes.s1,
+    },
+    search: {
+      paddingTop: sizes.s1,
+      backgroundColor: colors.background,
     },
     searchRow: {
+      position: "relative",
+      marginBottom: sizes.s0_25,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderDark,
       flexDirection: "row",
       gap: sizes.s0_50,
-      marginBottom: sizes.s1,
     },
     input: {
-      flex: 1,
       fontSize: fonts.fontSizeSmall,
-      borderColor: colors.borderDark,
       color: colors.text,
-      borderWidth: 0,
-      borderBottomWidth: 1,
+      paddingRight: sizes.s2,
       paddingHorizontal: 0,
+      flex: 1,
     },
-    button: {
-      backgroundColor: colors.backgroundDark,
-      paddingVertical: sizes.s0_50,
-      paddingHorizontal: sizes.s1,
-      borderWidth: 2,
-      justifyContent: "center",
+    searchIcon: {
+      alignSelf: "stretch",
+      flex: 0,
+      flexDirection: "row",
+      alignItems: "center",
+      alignContent: "center",
+      padding: sizes.s0_50,
+      zIndex: 1,
+      backgroundColor: colors.background,
     },
-    buttonWhite: {
-      backgroundColor: colors.backgroundLight,
-      borderColor: colors.backgroundDark,
-      paddingVertical: sizes.s0_50,
-      paddingHorizontal: sizes.s1,
-      borderWidth: 2,
-      justifyContent: "center",
-      marginVertical: sizes.s1,
-    },
-    buttonDisabled: {
+    searchIconDisabled: {
       opacity: 0.5,
     },
-    buttonText: {
-      fontSize: fonts.marginP,
-      fontWeight: "bold",
-      color: colors.backgroundDark_text,
-      textAlign: "center",
+    buttonWhite: {
+      paddingVertical: sizes.s0_50,
+      paddingHorizontal: sizes.s1,
+      justifyContent: "center",
+      marginVertical: sizes.s1,
     },
     buttonWhiteText: {
       fontSize: fonts.marginP,
