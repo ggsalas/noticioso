@@ -56,7 +56,10 @@
     "react-native-webview": "13.13.5",
     "readability": "^0.1.0",
     "safe-html": "^1.0.0",
-    "undefined": "@expo-google-fonts/jetbrains+mono"
+    "undefined": "@expo-google-fonts/jetbrains+mono",
+    "expo-document-picker": "~13.1.6",
+    "expo-file-system": "~18.1.11",
+    "expo-sharing": "~13.1.5"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",

@@ -31,11 +31,16 @@ export function Form({ item, loading, onSubmit, onDelete }: FormProps) {
   const [lang, setLang] = useState<"es" | "en">(feed.lang);
   const [oldestArticle, setOldestArticle] = useState(feed.oldestArticle);
   const nameRef = useRef<TextInput>(null);
+  const urlRef = useRef<TextInput>(null);
 
   useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => {
       setTimeout(() => {
-        nameRef.current?.focus();
+        if (isNew && !feed.name) {
+          nameRef.current?.focus();
+        } else if (feed.name && !feed.url) {
+          urlRef.current?.focus();
+        }
       }, 300);
     });
     return () => task.cancel();
@@ -63,6 +68,7 @@ export function Form({ item, loading, onSubmit, onDelete }: FormProps) {
           Feed URL
         </Text>
         <TextInput
+          ref={urlRef}
           style={style.input}
           placeholder="URL"
           placeholderTextColor={colors.textGrey}
@@ -172,7 +178,6 @@ function useStyles() {
       flexDirection: "column",
       justifyContent: "space-between",
       backgroundColor: colors.background,
-      borderWidth: 1,
       paddingBottom: insets.bottom,
       padding: sizes.s1,
     },
@@ -199,7 +204,7 @@ function useStyles() {
     picker: {
       borderWidth: 4,
       color: colors.text,
-      marginHorizontal: -16,
+      marginHorizontal: -8,
       marginBottom: -14,
     },
     pickerItem: {

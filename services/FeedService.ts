@@ -65,7 +65,7 @@ export class FeedService {
     if (feedsData !== null) {
       return feedsData;
     } else {
-      throw new Error("No feeds found");
+      return [];
     }
   };
 

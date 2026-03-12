@@ -1,16 +1,16 @@
-import { Link } from "expo-router";
 import { Pressable, Text, View, StyleSheet, ScrollView } from "react-native";
 import { useThemeContext } from "@/theme/ThemeProvider";
 import { MaterialIcons } from "@expo/vector-icons";
+import { ImportExportFeeds } from "@/components/ImportExportFeeds";
 
-export default function Index() {
+export default function Settings() {
   const { s, changeFontSize, sizes } = useStyles();
 
   return (
     <ScrollView style={s.scrollView}>
       <View style={s.main}>
         <View style={s.hero}>
-          <Text style={s.heroText}>Configure font size</Text>
+          <Text style={s.heroText}>Configure Font Size</Text>
           <Text style={s.testText}>
             This is a example of text, to adjust the height as you need
           </Text>
@@ -39,11 +39,7 @@ export default function Index() {
           </View>
         </View>
 
-        <Link href="/feeds" asChild>
-          <Pressable style={s.buttonWhite}>
-            <Text style={s.buttonWhiteText}>Read Now</Text>
-          </Pressable>
-        </Link>
+        <ImportExportFeeds />
       </View>
     </ScrollView>
   );
@@ -71,8 +67,7 @@ function useStyles() {
       alignItems: "center",
       gap: sizes.s1,
       borderColor: colors.borderDark,
-      borderRadius: sizes.s0_50,
-      borderWidth: 1,
+      borderBottomWidth: 1,
       padding: sizes.s2,
     },
     heroText: {

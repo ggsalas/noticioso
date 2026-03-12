@@ -89,10 +89,13 @@ export default function Feeds() {
     <>
       <Stack.Screen
         options={{
-          title: "Feeds",
+          title: "Noticioso",
           headerRight: () => (
-            <Link href="/config" asChild>
-              <Pressable style={style.rightButton}>
+            <Link href="/config/feedList" asChild>
+              <Pressable
+                style={style.rightButton}
+                android_ripple={{ color: colors.textGrey, borderless: true }}
+              >
                 <MaterialIcons
                   name="settings"
                   size={sizes.s1}
