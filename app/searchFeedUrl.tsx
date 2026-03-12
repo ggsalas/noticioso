@@ -17,7 +17,7 @@ import {
 } from "@/services/FeedDiscoveryService";
 
 export default function SearchFeedUrl() {
-  const { style, colors } = useStyles();
+  const { style, colors, sizes } = useStyles();
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
@@ -110,7 +110,7 @@ export default function SearchFeedUrl() {
                       ? "close"
                       : "search"
                   }
-                  size={22}
+                  size={sizes.s1}
                   color={colors.text}
                 />
               </Pressable>
@@ -221,5 +221,5 @@ function useStyles() {
     },
   });
 
-  return { style, colors };
+  return { style, colors, sizes };
 }

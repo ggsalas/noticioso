@@ -6,6 +6,7 @@ import { useThemeContext } from "@/theme/ThemeProvider";
 import { HTMLPagesNav } from "@/components/HTMLPagesNav";
 import { usePreviousRoute } from "~/providers/PreviousRoute";
 import { useFeedsContext } from "@/providers/FeedsProvider";
+import { MaterialIcons } from "@expo/vector-icons";
 
 export default function Feeds() {
   const { colors, fonts, sizes, style } = useStyles();
@@ -92,7 +93,11 @@ export default function Feeds() {
           headerRight: () => (
             <Link href="/config" asChild>
               <Pressable style={style.rightButton}>
-                <Text style={style.rightButtonText}>Config</Text>
+                <MaterialIcons
+                  name="settings"
+                  size={sizes.s1}
+                  color={colors.text}
+                />
               </Pressable>
             </Link>
           ),
