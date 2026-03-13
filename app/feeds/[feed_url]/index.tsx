@@ -26,20 +26,6 @@ export default function FeedPage() {
       feed_url,
     )}/articles/${encodeURIComponent(link)}`;
 
-  if (loading)
-    return (
-      <Text style={{ color: colors.text, padding: sizes.s1 }}>Loading...</Text>
-    );
-
-  if ((!loading && !content) || error)
-    return (
-      <>
-        <Text>The app has failed to get the feed content</Text>
-        <Text>content: {JSON.stringify(data, null, 4)}</Text>
-        <Text>error:{JSON.stringify(error)}</Text>
-      </>
-    );
-
   // TODO on big screens
   // ${ description ? '<div class="description">' + description + "</div>" : "" }
   const htmlItems =
@@ -109,36 +95,52 @@ export default function FeedPage() {
 
   return (
     <>
-      <Stack.Screen options={{ title: title }} />
+      <Stack.Screen options={{ title: title ?? "" }} />
 
-      <HTMLPagesNav
-        name="feed"
-        html={html}
-        actions={{
-          top: {
-            label: "Nothing",
-            action: () => null,
-          },
-          bottom: {
-            label: "Feeds List",
-            action: () => router.back(),
-          },
-          first: {
-            label: "Feeds List",
-            action: () => router.back(),
-          },
-          last: {
-            label: "Feeds List",
-            action: () => router.back(),
-          },
-        }}
-        handleLink={({ href }: HandleLinkData) => {
-          alert(`Unhandled link: ${href}`);
-        }}
-        handleRouterLink={({ path }: HandleRouterLinkData) => {
-          router.navigate(path);
-        }}
-      />
+      {loading && (
+        <Text style={{ color: colors.text, padding: sizes.s1 }}>
+          Loading...
+        </Text>
+      )}
+
+      {((!loading && !content) || error) && (
+        <>
+          <Text>The app has failed to get the feed content</Text>
+          <Text>content: {JSON.stringify(data, null, 4)}</Text>
+          <Text>error:{JSON.stringify(error)}</Text>
+        </>
+      )}
+
+      {!loading && content && (
+        <HTMLPagesNav
+          name="feed"
+          html={html}
+          actions={{
+            top: {
+              label: "Nothing",
+              action: () => null,
+            },
+            bottom: {
+              label: "Feeds List",
+              action: () => router.back(),
+            },
+            first: {
+              label: "Feeds List",
+              action: () => router.back(),
+            },
+            last: {
+              label: "Feeds List",
+              action: () => router.back(),
+            },
+          }}
+          handleLink={({ href }: HandleLinkData) => {
+            alert(`Unhandled link: ${href}`);
+          }}
+          handleRouterLink={({ path }: HandleRouterLinkData) => {
+            router.navigate(path);
+          }}
+        />
+      )}
     </>
   );
 }
