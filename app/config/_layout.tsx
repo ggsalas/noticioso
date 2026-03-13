@@ -19,14 +19,15 @@ export default function TabLayout() {
               ? DarkTheme.colors.card
               : DefaultTheme.colors.card,
         },
+        sceneStyle: { backgroundColor: theme.colors.background },
       }}
     >
       <Tabs.Screen
         name="feedList"
         options={{
-          title: "Handle Feeds",
+          title: "Feeds",
           tabBarIcon: ({ color }) => (
-            <MaterialIcons name="edit" size={24} color={color} />
+            <MaterialIcons name="rss-feed" size={24} color={color} />
           ),
           headerShown: false,
         }}

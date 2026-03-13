@@ -1,5 +1,6 @@
 import "react-native-gesture-handler";
 
+import { StatusBar } from "expo-status-bar";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import { Stack } from "expo-router";
@@ -68,6 +69,12 @@ export default function RootLayout() {
                   colorScheme === "dark"
                     ? DarkTheme.colors.text
                     : DefaultTheme.colors.text,
+                contentStyle: {
+                  backgroundColor:
+                    colorScheme === "dark"
+                      ? DarkTheme.colors.background
+                      : DefaultTheme.colors.background,
+                },
               }}
             >
               <Stack.Screen name="index" options={{ title: "Home" }} />
@@ -79,6 +86,15 @@ export default function RootLayout() {
           </FeedsProvider>
         </PreviousRouteProvider>
       </NavigationThemeProvider>
+      <StatusBar
+        style={colorScheme === "dark" ? "light" : "dark"}
+        translucent={false}
+        backgroundColor={
+          colorScheme === "dark"
+            ? DarkTheme.colors.card
+            : DefaultTheme.colors.card
+        }
+      />
     </ThemeProvider>
   );
 }

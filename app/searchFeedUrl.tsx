@@ -17,7 +17,7 @@ import {
 } from "@/services/FeedDiscoveryService";
 
 export default function SearchFeedUrl() {
-  const { style, colors, sizes } = useStyles();
+  const { style, colors, fonts } = useStyles();
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
@@ -75,7 +75,6 @@ export default function SearchFeedUrl() {
         stickyHeaderIndices={[0]}
         ListHeaderComponent={
           <View style={style.search}>
-            <Text>Search content or enter a URL</Text>
             <View style={style.searchRow}>
               <TextInput
                 ref={inputRef}
@@ -110,7 +109,7 @@ export default function SearchFeedUrl() {
                       ? "close"
                       : "search"
                   }
-                  size={sizes.s1}
+                  size={fonts.fontSizeH3}
                   color={colors.text}
                 />
               </Pressable>
@@ -157,17 +156,22 @@ function useStyles() {
     searchRow: {
       position: "relative",
       marginBottom: sizes.s0_25,
-      borderBottomWidth: 1,
+      borderBottomWidth: 3,
       borderBottomColor: colors.borderDark,
       flexDirection: "row",
       gap: sizes.s0_50,
     },
     input: {
-      fontSize: fonts.fontSizeSmall,
+      fontSize: fonts.fontSizeH3,
+      lineHeight: fonts.lineHeightComfortable,
       color: colors.text,
       paddingRight: sizes.s2,
       paddingHorizontal: 0,
       flex: 1,
+    },
+    label: {
+      fontSize: fonts.fontSizeSmall,
+      color: colors.text,
     },
     searchIcon: {
       alignSelf: "stretch",
@@ -221,5 +225,5 @@ function useStyles() {
     },
   });
 
-  return { style, colors, sizes };
+  return { style, colors, sizes, fonts };
 }

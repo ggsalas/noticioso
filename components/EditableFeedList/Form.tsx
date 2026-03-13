@@ -136,7 +136,10 @@ export function Form({ item, loading, onSubmit, onDelete }: FormProps) {
         )}
 
         <Pressable
-          style={style.saveButton}
+          style={() => [
+            style.saveButton,
+            (loading || !name || !url) && style.saveButtonDisabled,
+          ]}
           onPress={() =>
             onSubmit({
               ...feed,
@@ -146,7 +149,7 @@ export function Form({ item, loading, onSubmit, onDelete }: FormProps) {
               oldestArticle,
             })
           }
-          disabled={loading}
+          disabled={loading || !name || !url}
         >
           <Text style={style.buttonText}>Save Feed</Text>
         </Pressable>
@@ -205,7 +208,7 @@ function useStyles() {
       borderWidth: 4,
       color: colors.text,
       marginHorizontal: -8,
-      marginBottom: -14,
+      // marginBottom: -14,
     },
     pickerItem: {
       padding: 0,
@@ -228,6 +231,12 @@ function useStyles() {
     saveButton: {
       ...button,
       backgroundColor: colors.backgroundDark,
+      flex: 1,
+    },
+    saveButtonDisabled: {
+      ...button,
+      backgroundColor: `${colors.backgroundDark}66`,
+      borderColor: `${colors.backgroundDark}00`,
       flex: 1,
     },
     buttonText: {

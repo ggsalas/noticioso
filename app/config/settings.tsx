@@ -18,20 +18,20 @@ export default function Settings() {
           <View style={s.fontButtons}>
             <Pressable
               style={s.button}
-              onPress={() => changeFontSize && changeFontSize("increase")}
+              onPress={() => changeFontSize && changeFontSize("decrease")}
             >
               <MaterialIcons
-                name="add"
+                name="remove"
                 size={sizes.s1}
                 color={s.buttonText.color}
               />
             </Pressable>
             <Pressable
               style={s.button}
-              onPress={() => changeFontSize && changeFontSize("decrease")}
+              onPress={() => changeFontSize && changeFontSize("increase")}
             >
               <MaterialIcons
-                name="remove"
+                name="add"
                 size={sizes.s1}
                 color={s.buttonText.color}
               />
