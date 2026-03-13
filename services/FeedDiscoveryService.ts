@@ -32,7 +32,6 @@ async function safeFetch(url: string): Promise<string | null> {
   try {
     const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
     const status = res.status;
-    // console.log(status, url);
     if (status < 200 || status >= 300) return null;
     return await res.text();
   } catch {
@@ -40,17 +39,31 @@ async function safeFetch(url: string): Promise<string | null> {
   }
 }
 
-async function checkFeed(url: string): Promise<boolean> {
+async function checkFeed(
+  url: string,
+): Promise<{ valid: boolean; title?: string }> {
   try {
     const text = await safeFetch(url);
-    if (!text) return false;
-    return isFeedXML(text);
+    if (!text) return { valid: false };
+    if (!isFeedXML(text)) return { valid: false };
+
+    const data = xmlParser.parse(text);
+    const title: string =
+      data?.rss?.channel?.title ??
+      data?.feed?.title ??
+      data?.["rdf:RDF"]?.channel?.title ??
+      undefined;
+
+    return { valid: true, title: title };
   } catch {
-    return false;
+    return { valid: false };
   }
 }
 
-async function searchDuckDuckGo(query: string): Promise<string[]> {
+async function searchDuckDuckGo(
+  query: string,
+  maxResults: number = 5,
+): Promise<string[]> {
   const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query + " rss")}`;
   const html = await safeFetch(url);
   if (!html) return [];
@@ -69,7 +82,7 @@ async function searchDuckDuckGo(query: string): Promise<string[]> {
     }
   });
 
-  return [...new Set(results)].slice(0, 5);
+  return [...new Set(results)].slice(0, maxResults);
 }
 
 export class FeedDiscoveryService {
@@ -86,8 +99,6 @@ export class FeedDiscoveryService {
       } else {
         // Search mode: query DDG, get top 3 sites, extract feeds from each
         const siteUrls = await searchDuckDuckGo(trimmed);
-        console.log("[FeedDiscovery] DDG results:", siteUrls.length, siteUrls);
-
         const allFeeds: DiscoveredFeed[] = [];
         const seen = new Set<string>();
 
@@ -105,7 +116,6 @@ export class FeedDiscoveryService {
             }
 
             const feeds = await this.extractFeedLinks(html, siteUrl);
-            console.log(`>>> extracted feeds from ${siteUrl}:`, feeds.length);
 
             for (const feed of feeds) {
               if (!seen.has(feed.url)) {
@@ -119,7 +129,7 @@ export class FeedDiscoveryService {
         return allFeeds;
       }
     } catch (error) {
-      console.log("[FeedDiscovery] error:", error);
+      console.error("[FeedDiscovery] error:", error);
       throw new Error(`Error discovering feeds: ${error}`);
     }
   };
@@ -155,7 +165,7 @@ export class FeedDiscoveryService {
       // 3 — test common feed paths
       for (const path of COMMON_PATHS) {
         const candidate = new URL(path, baseUrl).href;
-        if (await checkFeed(candidate)) {
+        if ((await checkFeed(candidate)).valid) {
           feeds.add(candidate);
         }
       }
@@ -192,14 +202,14 @@ export class FeedDiscoveryService {
     // 5 — validate feeds
     const feedUrls = Array.from(feeds).slice(0, 10); // limit to 10 candidates
     const results = await Promise.all(
-      feedUrls.map(async (url) => ({
-        url,
-        valid: await checkFeed(url),
-      })),
+      feedUrls.map(async (url) => {
+        const { valid, title } = await checkFeed(url);
+        return { url, valid, title };
+      }),
     );
     const validFeeds: DiscoveredFeed[] = results
       .filter((r) => r.valid)
-      .map((r) => ({ title: r.url, url: r.url, type: "" }));
+      .map((r) => ({ title: r.title ?? r.url, url: r.url, type: "" }));
 
     return validFeeds;
   }

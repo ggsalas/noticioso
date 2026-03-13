@@ -69,22 +69,6 @@ export default function Feeds() {
     ${htmlItems}
   `;
 
-  if (loading) {
-    return (
-      <Text style={{ color: colors.text, padding: sizes.s1 }}>Loading...</Text>
-    );
-  }
-
-  if ((!loading && !feeds) || error) {
-    return (
-      <>
-        <Text>The app has failed to get the feed list</Text>
-        <Text>content: {JSON.stringify(feeds, null, 4)}</Text>
-        <Text>error:{JSON.stringify(error)}</Text>
-      </>
-    );
-  }
-
   return (
     <>
       <Stack.Screen
@@ -107,32 +91,48 @@ export default function Feeds() {
         }}
       />
 
-      <HTMLPagesNav
-        key={resetNavigation}
-        name="feed"
-        html={html}
-        actions={{
-          top: {
-            label: "Nothing",
-            action: () => null,
-          },
-          bottom: {
-            label: "Page 1",
-            action: () => setResetNavigation((val) => val + 1),
-          },
-          first: {
-            label: "Page 1",
-            action: () => setResetNavigation((val) => val + 1),
-          },
-          last: {
-            label: "Page 1",
-            action: () => setResetNavigation((val) => val + 1),
-          },
-        }}
-        handleRouterLink={({ path }: HandleRouterLinkData) => {
-          router.navigate(path);
-        }}
-      />
+      {loading && (
+        <Text style={{ color: colors.text, padding: sizes.s1 }}>
+          Loading...
+        </Text>
+      )}
+
+      {((!loading && !feeds) || error) && (
+        <>
+          <Text>The app has failed to get the feed list</Text>
+          <Text>content: {JSON.stringify(feeds, null, 4)}</Text>
+          <Text>error:{JSON.stringify(error)}</Text>
+        </>
+      )}
+
+      {!loading && feeds && (
+        <HTMLPagesNav
+          key={resetNavigation}
+          name="feed"
+          html={html}
+          actions={{
+            top: {
+              label: "Nothing",
+              action: () => null,
+            },
+            bottom: {
+              label: "Page 1",
+              action: () => setResetNavigation((val) => val + 1),
+            },
+            first: {
+              label: "Page 1",
+              action: () => setResetNavigation((val) => val + 1),
+            },
+            last: {
+              label: "Page 1",
+              action: () => setResetNavigation((val) => val + 1),
+            },
+          }}
+          handleRouterLink={({ path }: HandleRouterLinkData) => {
+            router.navigate(path);
+          }}
+        />
+      )}
     </>
   );
 }

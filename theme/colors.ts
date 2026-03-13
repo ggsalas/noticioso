@@ -35,7 +35,7 @@ export const colors = {
   },
   dark: {
     text: "#ffffff",
-    textGrey: "#333",
+    textGrey: "#adadad",
     background: "#000000",
     tint: tintColorDark,
     icon: "#9BA1A6",

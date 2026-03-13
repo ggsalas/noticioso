@@ -1,50 +1,85 @@
-# Welcome to your Expo app 👋
+<div align="center">
+  <img src="assets/images/splash-icon-light.png" width="160" alt="Noticioso" />
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+  <h1>Noticioso</h1>
 
-## Get started
+  <p>A personal RSS feed reader built for e-ink Android devices.<br/>No algorithm, no ads, no noise, just the articles you chose to follow. </p>
 
-1. Install dependencies
+  <a href="https://github.com/ggsalas/noticioso-native/releases/latest/download/noticioso.apk">
+    <img src="https://img.shields.io/badge/Download-APK-4CAF50?style=for-the-badge&logo=android&logoColor=white" alt="Download APK" />
+  </a>
+</div>
 
-   ```bash
-   npm install
-   ```
+## Features
 
-2. Start the app
+- **Feed discovery** — paste a URL or type a search term. The app queries DuckDuckGo, visits each result, and auto-discovers RSS/Atom feeds.
+- **Full article extraction** — fetches the original article and runs it through Mozilla Readability for a distraction-free reading experience.
+- **Paginated reader** — all content (feed list, article list, article body) renders inside a WebView using CSS multi-column layout. Swipe left/right to flip pages, swipe up/down to navigate between screens.
+- **Drag-to-reorder feeds** — manage your feed list with drag-and-drop.
+- **Import / Export** — back up and restore your feed list as a JSON file via the native share sheet and document picker.
 
-   ```bash
-    npx expo start
-   ```
+## Tech Stack
 
-In the output, you'll find options to open the app in a
+| Category           | Libraries                                                  |
+| ------------------ | ---------------------------------------------------------- |
+| Framework          | React Native, Expo                                         |
+| Navigation         | Expo Router (file-based routing)                           |
+| RSS Parsing        | `fast-xml-parser`                                          |
+| Article Extraction | `@mozilla/readability` + `linkedom`                        |
+| HTML Rendering     | `react-native-webview` (custom paginated wrapper)          |
+| Gestures           | `react-native-gesture-handler`, `react-native-reanimated`  |
+| Storage            | `@react-native-async-storage/async-storage`                |
+| File I/O           | `expo-file-system`, `expo-document-picker`, `expo-sharing` |
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Development
 
 ```bash
-npm run reset-project
+npm install
+
+# Start Expo dev server
+npm start
+
+# Run on a connected Android device
+npm run android
+
+# Run on iOS simulator
+npm run ios
+
+# Lint
+npm run lint
+
+# Tests
+npm test
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+For a native dev build without Expo Go (required to debug native behaviour):
 
-## Learn more
+```bash
+npx expo install expo-dev-client
+npx expo run:android
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+## Architecture
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+The app is split into three distinct layers: a service layer that owns all business logic, a UI layer that stays intentionally thin, and a framework-agnostic library for the paginated reader engine.
 
-## Join the community
+### services/
 
-Join our community of developers creating universal apps.
+Plain TypeScript classes with no dependency on React or the component lifecycle. Each service exports a singleton instance used throughout the app, but accepts its dependencies via constructor, making them instantiable and testable in isolation.
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- `StorageService.ts` — typed key-value interface over AsyncStorage
+- `FeedService.ts` — fetches and parses RSS feeds, manages feed persistence
+- `ArticleService.ts` — fetches articles and extracts clean content via Readability
+- `FeedDiscoveryService.ts` — discovers RSS feeds from URLs or plain search terms via DuckDuckGo
+
+### UI Layer
+
+Screens and components read from context providers and call service methods directly. State lives in `FeedsProvider`. The theme system exposes a single `baseFontSize` from which all typography, spacing, and layout values are derived.
+
+### lib/
+
+Self-contained modules with no framework dependencies. Portable, independently testable, and free of React Native or Expo concerns.
+
+#### lib/horizontalNavigation
+
+The core of the paginated reader. Generates the HTML document injected into the WebView, including the CSS multi-column layout, theme tokens as CSS variables, and a bridge script that communicates page dimensions and user interactions back to React Native via `postMessage`.

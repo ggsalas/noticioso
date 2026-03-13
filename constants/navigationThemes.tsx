@@ -5,7 +5,7 @@ export const DarkTheme: Theme = {
   dark: true,
   colors: {
     primary: colors.dark.tint,
-    background: colors.dark.backgroundDark,
+    background: colors.dark.backgroundLight,
     card: colors.dark.backgroundLight,
     text: colors.dark.text,
     border: colors.dark.borderDark,
