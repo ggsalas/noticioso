@@ -1,5 +1,11 @@
 # Noticioso Android - Agent Guidelines
 
+## Git
+- NEVER run git commands that modify state (no git add, git commit, git push, git rebase, git reset, git merge, nothing that changes history or index)
+- Read-only git commands are allowed (git log, git diff, git show, git status, git branch)
+- NEVER create commits or interact with git in any way that modifies the repo
+- The user manages git exclusively
+
 ## Build/Test/Lint Commands
 - `npm run lint` - Run Expo linter
 - `npm test` - Run Jest tests in watch mode (single test: `npm test -- --testNamePattern="test name"`)
