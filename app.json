@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Noticioso",
-    "slug": "noticioso",
+    "slug": "noticioso-android",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/adaptive-icon.png",
