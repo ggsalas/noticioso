@@ -3,7 +3,7 @@ import "react-native-gesture-handler";
 import { StatusBar } from "expo-status-bar";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import {
   Alegreya_500Medium,
   Alegreya_500Medium_Italic,
@@ -17,18 +17,21 @@ import {
   JetBrainsMono_700Bold_Italic,
 } from "@expo-google-fonts/jetbrains-mono";
 import { useEffect } from "react";
-import { useColorScheme } from "react-native";
+import { useColorScheme, ToastAndroid } from "react-native";
 import { ThemeProvider as NavigationThemeProvider } from "@react-navigation/native";
 import { DarkTheme, DefaultTheme } from "@/constants/navigationThemes";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { FeedsProvider } from "@/providers/FeedsProvider";
 import { PreviousRouteProvider } from "~/providers/PreviousRoute";
+import { useShareIntent } from "expo-share-intent";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  const router = useRouter();
+  const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntent();
   const [loaded, error] = useFonts({
     Alegreya_500Medium,
     Alegreya_500Medium_Italic,
@@ -45,6 +48,25 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [loaded, error]);
+
+  // Handle share intents when the app is opened via the share menu.
+  useEffect(() => {
+    if (!hasShareIntent) return;
+    const raw = shareIntent.webUrl ?? shareIntent.text ?? null;
+
+    try {
+      if (!raw) throw new Error();
+      const parsed = new URL(raw);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
+        throw new Error();
+
+      router.replace(`/shared/${encodeURIComponent(raw)}` as never);
+    } catch {
+      ToastAndroid.show("Only web URLs can be shared", ToastAndroid.SHORT);
+    } finally {
+      resetShareIntent();
+    }
+  }, [hasShareIntent, shareIntent, router, resetShareIntent]);
 
   if (!loaded && !error) {
     return null;
