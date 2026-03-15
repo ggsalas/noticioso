@@ -1,5 +1,8 @@
 <div align="center">
-  <img src="assets/images/splash-icon-light.png" width="160" alt="Noticioso" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/images/splash-icon-dark.png" />
+    <img src="assets/images/splash-icon-light.png" width="160" alt="Noticioso" />
+  </picture>
 
   <h1>Noticioso</h1>
 
@@ -16,6 +19,7 @@
 - **Full article extraction** — fetches the original article and runs it through Mozilla Readability for a distraction-free reading experience.
 - **Paginated reader** — all content (feed list, article list, article body) renders inside a WebView using CSS multi-column layout. Swipe left/right to flip pages, swipe up/down to navigate between screens.
 - **Drag-to-reorder feeds** — manage your feed list with drag-and-drop.
+- **Share to read** — share any URL from your browser directly into Noticioso to read it as a clean, distraction-free article.
 - **Import / Export** — back up and restore your feed list as a JSON file via the native share sheet and document picker.
 
 ## Tech Stack

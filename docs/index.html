@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="A personal RSS feed reader built for e-ink Android devices. No algorithm, no ads, no noise."
+    />
+    <title>Noticioso</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Alegreya:ital,wght@0,400;0,500;0,700;1,400;1,500;1,700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --ink: #1a1a1a;
+        --paper: #f5f0e8;
+        --grey: #6b6560;
+        --rule: #c8c0b4;
+        --accent: #2a2a2a;
+        --column-max: 680px;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --ink: #e8e3db;
+          --paper: #141414;
+          --grey: #9a9590;
+          --rule: #333;
+          --accent: #e8e3db;
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      html {
+        font-size: 18px;
+      }
+
+      body {
+        background-color: var(--paper);
+        color: var(--ink);
+        font-family: "Alegreya", Georgia, serif;
+        line-height: 1.7;
+        padding: 0 1.5rem;
+      }
+
+      /* ── Masthead ─────────────────────────────────────── */
+
+      header {
+        max-width: var(--column-max);
+        margin: 0 auto;
+        padding: 3rem 0 1.5rem;
+        text-align: center;
+        border-bottom: 3px double var(--rule);
+      }
+
+      header img {
+        width: 160px;
+        height: 160px;
+        object-fit: contain;
+        filter: grayscale(1);
+        opacity: 0.85;
+        margin-bottom: 1rem;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        header img {
+          filter: grayscale(1) invert(1);
+        }
+      }
+
+      h1 {
+        font-size: 3rem;
+        font-weight: normal;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        line-height: 1;
+        margin-bottom: 0.75rem;
+      }
+
+      .dateline {
+        font-size: 0.65rem;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--grey);
+        margin-bottom: 1rem;
+        font-family: "JetBrains Mono", "Courier New", monospace;
+      }
+
+      .lede {
+        font-size: 1.05rem;
+        font-style: italic;
+        color: var(--grey);
+        max-width: 480px;
+        margin: 0 auto 1.5rem;
+        line-height: 1.6;
+      }
+
+      .download-btn {
+        display: inline-block;
+        margin-top: 0.5rem;
+        padding: 0.55rem 1.4rem;
+        border: 1.5px solid var(--ink);
+        color: var(--ink);
+        text-decoration: none;
+        font-family: "JetBrains Mono", "Courier New", monospace;
+        font-size: 0.75rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        transition:
+          background 0.15s,
+          color 0.15s;
+      }
+
+      .download-btn:hover {
+        background: var(--ink);
+        color: var(--paper);
+      }
+
+      /* ── Main content ─────────────────────────────────── */
+
+      main {
+        max-width: var(--column-max);
+        margin: 0 auto;
+        padding: 2rem 0 3rem;
+      }
+
+      /* Section rule + label */
+      .section-label {
+        font-size: 0.65rem;
+        letter-spacing: 0.25em;
+        text-transform: uppercase;
+        color: var(--grey);
+        border-top: 1px solid var(--rule);
+        padding-top: 0.6rem;
+        margin-bottom: 1.2rem;
+        font-family: "JetBrains Mono", "Courier New", monospace;
+      }
+
+      section {
+        margin-bottom: 2.5rem;
+      }
+
+      /* Features */
+      .features {
+        list-style: none;
+        border-top: 1px solid var(--rule);
+      }
+
+      .features li {
+        padding: 0.75rem 0;
+        border-bottom: 1px solid var(--rule);
+        font-size: 0.95rem;
+      }
+
+      .features li strong {
+        font-style: normal;
+      }
+
+      /* Tech stack table */
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+      }
+
+      th,
+      td {
+        text-align: left;
+        padding: 0.5rem 0.4rem;
+        border-bottom: 1px solid var(--rule);
+        vertical-align: top;
+      }
+
+      th {
+        font-size: 0.65rem;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        color: var(--grey);
+        font-weight: normal;
+        border-bottom: 1.5px solid var(--rule);
+      }
+
+      td code {
+        font-family: "JetBrains Mono", "Courier New", monospace;
+        font-size: 0.78rem;
+        background: none;
+      }
+
+      /* Code blocks */
+      pre {
+        background: none;
+        border-left: 2px solid var(--rule);
+        padding: 0.6rem 1rem;
+        font-size: 0.8rem;
+        font-family: "JetBrains Mono", "Courier New", monospace;
+        line-height: 1.6;
+        overflow-x: auto;
+        color: var(--ink);
+      }
+
+      /* Architecture prose */
+      p {
+        font-size: 0.95rem;
+        margin-bottom: 1rem;
+      }
+
+      h3 {
+        font-size: 0.9rem;
+        font-weight: bold;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        margin: 1.2rem 0 0.4rem;
+      }
+
+      /* ── Footer ───────────────────────────────────────── */
+
+      footer {
+        max-width: var(--column-max);
+        margin: 0 auto;
+        padding: 1.5rem 0 2.5rem;
+        border-top: 3px double var(--rule);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.65rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--grey);
+        font-family: "JetBrains Mono", "Courier New", monospace;
+      }
+
+      footer a {
+        color: var(--grey);
+        text-decoration: none;
+        border-bottom: 1px solid var(--rule);
+      }
+
+      footer a:hover {
+        color: var(--ink);
+        border-bottom-color: var(--ink);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <img src="icon.png" alt="Noticioso icon" />
+      <h1>Noticioso</h1>
+      <p class="dateline">
+        Android &nbsp;·&nbsp; RSS Reader &nbsp;·&nbsp; Open Source
+      </p>
+      <p class="lede">
+        A personal RSS feed reader built for e-ink Android devices. No
+        algorithm, no ads, no noise — just the articles you chose to follow.
+      </p>
+      <a
+        class="download-btn"
+        href="https://github.com/ggsalas/noticioso-native/releases/latest/download/noticioso.apk"
+      >
+        Download APK
+      </a>
+    </header>
+
+    <main>
+      <section>
+        <p class="section-label">Features</p>
+        <ul class="features">
+          <li>
+            <strong>Feed discovery</strong> — paste a URL or type a search term.
+            The app queries DuckDuckGo, visits each result, and auto-discovers
+            RSS/Atom feeds.
+          </li>
+          <li>
+            <strong>Full article extraction</strong> — fetches the original
+            article and runs it through Mozilla Readability for a
+            distraction-free reading experience.
+          </li>
+          <li>
+            <strong>Paginated reader</strong> — all content renders inside a
+            WebView using CSS multi-column layout. Swipe left/right to flip
+            pages, swipe up/down to navigate between screens.
+          </li>
+          <li>
+            <strong>Drag-to-reorder feeds</strong> — manage your feed list with
+            drag-and-drop.
+          </li>
+          <li>
+            <strong>Import / Export</strong> — back up and restore your feed
+            list as a JSON file via the native share sheet and document picker.
+          </li>
+          <li>
+            <strong>Share to read</strong> — share any URL from your browser
+            directly into Noticioso to read it as a clean article.
+          </li>
+        </ul>
+      </section>
+    </main>
+
+    <footer>
+      <span>Noticioso</span>
+      <a href="https://github.com/ggsalas/noticioso-native"
+        >View source on GitHub</a
+      >
+    </footer>
+  </body>
+</html>
