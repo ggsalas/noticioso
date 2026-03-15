@@ -1,11 +1,12 @@
 import { articleService } from "@/services/ArticleService";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { Text, StyleSheet, View, Pressable, Share } from "react-native";
 import { useAsyncFn } from "~/hooks/useAsyncFn";
 import { HTMLPagesNav } from "@/components/HTMLPagesNav/index";
 import { useThemeContext } from "@/theme/ThemeProvider";
 import { HandleLinkData, HTMLPagesNavActions } from "@/types";
 import { MaterialIcons } from "@expo/vector-icons";
+import { isWebUrl } from "@/validators/url";
 
 type Props = {
   article_url: string;
@@ -14,6 +15,7 @@ type Props = {
 
 export function ArticleView({ article_url, actions }: Props) {
   const { styles, colors, sizes } = useStyles();
+  const router = useRouter();
 
   const {
     data: article,
@@ -78,7 +80,9 @@ export function ArticleView({ article_url, actions }: Props) {
           html={getContent()}
           actions={actions}
           handleLink={({ href }: HandleLinkData) => {
-            alert(`Unhandled link: ${href}`);
+            if (isWebUrl(href)) {
+              router.push(`/shared/${encodeURIComponent(href)}` as never);
+            }
           }}
         />
       )}

@@ -9,10 +9,10 @@ export default function SharedArticlePage() {
     <ArticleView
       article_url={article_url}
       actions={{
-        top: { label: "Nothing", action: () => router.replace("/feeds") },
-        bottom: { label: "Feeds", action: () => router.replace("/feeds") },
-        first: { label: "Feeds", action: () => router.replace("/feeds") },
-        last: { label: "Feeds", action: () => router.replace("/feeds") },
+        top: { label: "", action: () => null },
+        bottom: { label: "Back", action: () => router.back() },
+        first: { label: "Back", action: () => router.back() },
+        last: { label: "", action: () => null },
       }}
     />
   );

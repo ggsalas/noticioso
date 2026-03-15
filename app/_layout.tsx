@@ -24,6 +24,7 @@ import { ThemeProvider } from "@/theme/ThemeProvider";
 import { FeedsProvider } from "@/providers/FeedsProvider";
 import { PreviousRouteProvider } from "~/providers/PreviousRoute";
 import { useShareIntent } from "expo-share-intent";
+import { isWebUrl } from "@/validators/url";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -55,11 +56,7 @@ export default function RootLayout() {
     const raw = shareIntent.webUrl ?? shareIntent.text ?? null;
 
     try {
-      if (!raw) throw new Error();
-      const parsed = new URL(raw);
-      if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
-        throw new Error();
-
+      if (!raw || !isWebUrl(raw)) throw new Error();
       router.replace(`/shared/${encodeURIComponent(raw)}` as never);
     } catch {
       ToastAndroid.show("Only web URLs can be shared", ToastAndroid.SHORT);
