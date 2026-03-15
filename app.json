@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "noticioso-android",
-    "slug": "noticioso-android",
+    "name": "Noticioso",
+    "slug": "noticioso",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/adaptive-icon.png",
@@ -26,6 +26,12 @@
     "plugins": [
       "expo-router",
       "expo-font",
+      [
+        "expo-share-intent",
+        {
+          "androidIntentFilters": ["text/*"]
+        }
+      ],
       [
         "expo-splash-screen",
         {
