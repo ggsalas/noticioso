@@ -6,7 +6,7 @@
 
   <h1>Noticioso</h1>
 
-  <p>A personal RSS feed reader built for e-ink Android devices.<br/>No algorithm, no ads, no noise, just the articles you chose to follow. </p>
+  <p>A personal RSS reader with full article extraction, built for e-ink devices.<br/>No algorithm, no noise, just the articles you chose to follow. </p>
 
   <a href="https://github.com/ggsalas/noticioso-native/releases/latest/download/noticioso.apk">
     <img src="https://img.shields.io/badge/Download-APK-4CAF50?style=for-the-badge&logo=android&logoColor=white" alt="Download APK" />
@@ -18,22 +18,19 @@
 - **Feed discovery** — paste a URL or type a search term. The app queries DuckDuckGo, visits each result, and auto-discovers RSS/Atom feeds.
 - **Full article extraction** — fetches the original article and runs it through Mozilla Readability for a distraction-free reading experience.
 - **Paginated reader** — all content (feed list, article list, article body) renders inside a WebView using CSS multi-column layout. Swipe left/right to flip pages, swipe up/down to navigate between screens.
-- **Drag-to-reorder feeds** — manage your feed list with drag-and-drop.
 - **Share to read** — share any URL from your browser directly into Noticioso to read it as a clean, distraction-free article.
 - **Import / Export** — back up and restore your feed list as a JSON file via the native share sheet and document picker.
 
 ## Tech Stack
 
-| Category           | Libraries                                                  |
-| ------------------ | ---------------------------------------------------------- |
-| Framework          | React Native, Expo                                         |
-| Navigation         | Expo Router (file-based routing)                           |
-| RSS Parsing        | `fast-xml-parser`                                          |
-| Article Extraction | `@mozilla/readability` + `linkedom`                        |
-| HTML Rendering     | `react-native-webview` (custom paginated wrapper)          |
-| Gestures           | `react-native-gesture-handler`, `react-native-reanimated`  |
-| Storage            | `@react-native-async-storage/async-storage`                |
-| File I/O           | `expo-file-system`, `expo-document-picker`, `expo-sharing` |
+| Category           | Libraries                                                 |
+| ------------------ | --------------------------------------------------------- |
+| Framework          | React Native, Expo                                        |
+| RSS Parsing        | `fast-xml-parser`                                         |
+| Article Extraction | `@mozilla/readability` + `linkedom`                       |
+| HTML Rendering     | `react-native-webview` (custom paginated wrapper)         |
+| Gestures           | `react-native-gesture-handler`, `react-native-reanimated` |
+| Storage            | `@react-native-async-storage/async-storage`               |
 
 ## Development
 
@@ -69,12 +66,7 @@ The app is split into three distinct layers: a service layer that owns all busin
 
 ### services/
 
-Plain TypeScript classes with no dependency on React or the component lifecycle. Each service exports a singleton instance used throughout the app, but accepts its dependencies via constructor, making them instantiable and testable in isolation.
-
-- `StorageService.ts` — typed key-value interface over AsyncStorage
-- `FeedService.ts` — fetches and parses RSS feeds, manages feed persistence
-- `ArticleService.ts` — fetches articles and extracts clean content via Readability
-- `FeedDiscoveryService.ts` — discovers RSS feeds from URLs or plain search terms via DuckDuckGo
+The service layer is a set of plain TypeScript classes with no dependency on React or the component lifecycle. Dependencies are injected via constructor, so each service can be instantiated and tested in isolation. Together they cover feed discovery via DuckDuckGo, RSS fetching and parsing, article extraction through Mozilla Readability, and persistent storage over AsyncStorage.
 
 ### UI Layer
 
@@ -82,7 +74,7 @@ Screens and components read from context providers and call service methods dire
 
 ### lib/
 
-Self-contained modules with no framework dependencies. Portable, independently testable, and free of React Native or Expo concerns.
+Self-contained modules with no framework dependencies.
 
 #### lib/horizontalNavigation
 
