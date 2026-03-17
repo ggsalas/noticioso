@@ -62,7 +62,7 @@ async function checkFeed(
 
 async function searchDuckDuckGo(
   query: string,
-  maxResults: number = 5,
+  maxResults: number = 3,
 ): Promise<string[]> {
   const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query + " rss")}`;
   const html = await safeFetch(url);

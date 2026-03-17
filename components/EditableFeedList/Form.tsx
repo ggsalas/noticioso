@@ -172,6 +172,7 @@ function useStyles() {
     paddingVertical: sizes.s0_50,
     paddingHorizontal: sizes.s1,
     borderWidth: 2,
+    borderColor: colors.borderDark,
   };
   const buttonText: TextStyle = {
     fontSize: fonts.marginP,
