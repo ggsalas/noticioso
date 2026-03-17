@@ -1,22 +1,20 @@
 import { HTMLPagesNav } from "@/components/HTMLPagesNav";
-import { feedService } from "@/services/FeedService";
-import { useAsyncFn } from "~/hooks/useAsyncFn";
+import { useFeedContent } from "~/hooks/useFeedContent";
 import { usePreviousRoute } from "~/providers/PreviousRoute";
 import { useThemeContext } from "@/theme/ThemeProvider";
 import { HandleLinkData, HandleRouterLinkData } from "@/types";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { Text } from "react-native";
+import { Text, View, StyleSheet } from "react-native";
+import { formatLastRefresh } from "~/formatters/timeFormatters";
 
 export default function FeedPage() {
-  const { colors, fonts, sizes } = useStyles();
+  const { colors, fonts, sizes, style } = useStyles();
   const { feed_url } = useLocalSearchParams<{ feed_url: string }>();
   const router = useRouter();
-  const { data, loading, error } = useAsyncFn(
-    feedService.getFeedContent,
-    feed_url,
-  );
+  const { data, loading, isRefreshing, error } = useFeedContent(feed_url);
   const content = data?.rss?.channel?.item;
   const title = data?.rss?.channel?.title;
+  const date = data?.date?.toString();
 
   const previousRoute = usePreviousRoute<{ article_url: string }>();
   const previousArticleUrl = previousRoute?.params?.article_url;
@@ -95,7 +93,30 @@ export default function FeedPage() {
 
   return (
     <>
-      <Stack.Screen options={{ title: title ?? "" }} />
+      <Stack.Screen
+        options={{
+          headerTitle: () => (
+            <View style={style.headerContainer}>
+              <Text
+                style={style.headerTitle}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {title ?? ""}
+              </Text>
+              <Text
+                style={style.headerSubtitle}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {isRefreshing
+                  ? "Updating... "
+                  : `Updated ${formatLastRefresh(date)}`}
+              </Text>
+            </View>
+          ),
+        }}
+      />
 
       {loading && (
         <Text style={{ color: colors.text, padding: sizes.s1 }}>
@@ -149,5 +170,24 @@ function useStyles() {
   const { theme } = useThemeContext();
   const { colors, fonts, sizes } = theme;
 
-  return { colors, fonts, sizes };
+  const style = StyleSheet.create({
+    headerContainer: {
+      flexBasis: "80%",
+    },
+    headerTitle: {
+      fontSize: 20,
+      fontWeight: "bold",
+      color: colors.text,
+      overflow: "hidden",
+    },
+    headerSubtitle: {
+      fontSize: 14,
+      lineHeight: 18,
+      height: 18,
+      color: colors.text,
+      overflow: "hidden",
+    },
+  });
+
+  return { colors, fonts, sizes, style };
 }

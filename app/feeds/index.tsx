@@ -1,5 +1,5 @@
 import { Link, Stack, useRouter } from "expo-router";
-import { Pressable, Text, StyleSheet } from "react-native";
+import { Pressable, Text, StyleSheet, View } from "react-native";
 import { useState } from "react";
 import { HandleRouterLinkData } from "@/types";
 import { useThemeContext } from "@/theme/ThemeProvider";
@@ -7,10 +7,19 @@ import { HTMLPagesNav } from "@/components/HTMLPagesNav";
 import { usePreviousRoute } from "~/providers/PreviousRoute";
 import { useFeedsContext } from "@/providers/FeedsProvider";
 import { MaterialIcons } from "@expo/vector-icons";
+import { formatLastRefresh } from "~/formatters/timeFormatters";
 
 export default function Feeds() {
   const { colors, fonts, sizes, style } = useStyles();
-  const { feeds, loading, error } = useFeedsContext();
+  const {
+    feeds,
+    loading,
+    error,
+    feedArticleCounts,
+    prefetching,
+    lastFullRefreshAt,
+    refreshAllFeeds,
+  } = useFeedsContext();
   const router = useRouter();
   const [resetNavigation, setResetNavigation] = useState(1);
 
@@ -19,17 +28,22 @@ export default function Feeds() {
 
   const getRouteLink = (link: string) => `/feeds/${encodeURIComponent(link)}`;
 
+  const visibleFeeds = feeds?.filter(
+    ({ url }) =>
+      feedArticleCounts[url] === undefined || feedArticleCounts[url] > 0,
+  );
+
   const htmlItems =
-    feeds?.length === 0
+    visibleFeeds?.length === 0
       ? '<div class="no-new-conent">No feeds found</div>'
-      : feeds
+      : visibleFeeds
           ?.map(
             ({ name, url }: any) => `
             <div 
               class="item" 
               data-route-link="${getRouteLink(url)}" 
             >
-              <h3 class="title">${name}</h3>
+              <h3 class="title">${name}${feedArticleCounts[url] !== undefined ? ` (${feedArticleCounts[url]})` : ""}</h3>
             </div>
           `,
           )
@@ -73,20 +87,41 @@ export default function Feeds() {
     <>
       <Stack.Screen
         options={{
-          title: "Noticioso",
-          headerRight: () => (
-            <Link href="/config/feedList" asChild>
-              <Pressable
-                style={style.rightButton}
-                android_ripple={{ color: colors.textGrey, borderless: true }}
+          headerTitle: () => (
+            <View style={style.headerContainer}>
+              <Text
+                style={style.headerTitle}
+                numberOfLines={1}
+                ellipsizeMode="tail"
               >
-                <MaterialIcons
-                  name="settings"
-                  size={sizes.s1}
-                  color={colors.text}
-                />
-              </Pressable>
-            </Link>
+                Noticioso
+              </Text>
+              <Text
+                style={style.headerSubtitle}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {prefetching
+                  ? "Updating..."
+                  : `Last full update at ${formatLastRefresh(lastFullRefreshAt)}`}
+              </Text>
+            </View>
+          ),
+          headerRight: () => (
+            <>
+              <Link href="/config/feedList" asChild>
+                <Pressable
+                  style={style.rightButton}
+                  android_ripple={{ color: colors.textGrey, borderless: true }}
+                >
+                  <MaterialIcons
+                    name="settings"
+                    size={sizes.s1}
+                    color={colors.text}
+                  />
+                </Pressable>
+              </Link>
+            </>
           ),
         }}
       />
@@ -112,8 +147,8 @@ export default function Feeds() {
           html={html}
           actions={{
             top: {
-              label: "Nothing",
-              action: () => null,
+              label: "Refresh All Feeds",
+              action: refreshAllFeeds,
             },
             bottom: {
               label: "Page 1",
@@ -146,6 +181,22 @@ function useStyles() {
     rightButtonText: {
       fontSize: fonts.marginP,
       color: colors.text,
+    },
+    headerContainer: {
+      flexBasis: "80%",
+    },
+    headerTitle: {
+      fontSize: 20,
+      fontWeight: "bold",
+      color: colors.text,
+      overflow: "hidden",
+    },
+    headerSubtitle: {
+      fontSize: 14,
+      lineHeight: 18,
+      height: 18,
+      color: colors.text,
+      overflow: "hidden",
     },
   });
 

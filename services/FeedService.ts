@@ -1,6 +1,7 @@
 import { XMLParser } from "fast-xml-parser";
 import sanitize from "safe-html";
 import { storageService, StorageService } from "./StorageService";
+import { feedCacheService, FeedCacheService } from "./FeedCacheService";
 import type { Feed, FeedData, FeedContentItem } from "~/types";
 
 const FEEDS_LIST_KEY = "@noticioso-feedList";
@@ -8,12 +9,26 @@ const FEEDS_LIST_KEY = "@noticioso-feedList";
 export class FeedService {
   private xmlParser: XMLParser;
 
-  constructor(private storage: StorageService = storageService) {
+  constructor(
+    private storage: StorageService = storageService,
+    private cache: FeedCacheService = feedCacheService,
+  ) {
     this.xmlParser = new XMLParser();
   }
 
-  getFeedContent = async (url: string): Promise<FeedData> => {
+  getFeedContent = async (
+    url: string,
+    onCacheLoaded?: (data: FeedData) => void,
+  ): Promise<FeedData> => {
     try {
+      // Serve from cache immediately if available
+      if (onCacheLoaded) {
+        const cached = await this.cache.get(url);
+        if (cached) {
+          onCacheLoaded(cached.data);
+        }
+      }
+
       const feed = await this.getFeedByUrl(url);
 
       // Fetch and parse RSS content
@@ -52,6 +67,8 @@ export class FeedService {
 
       feedContent.rss.channel.item = items;
       feedContent.date = new Date();
+
+      await this.cache.set(url, feedContent);
 
       return feedContent;
     } catch (error) {
@@ -115,6 +132,7 @@ export class FeedService {
       }
 
       const updatedFeeds = feeds.filter((f) => f.id !== feed.id);
+      await this.cache.delete(feed.url);
       return await this.saveFeeds(updatedFeeds);
     } catch {
       throw new Error("Feed cannot be deleted");
@@ -159,4 +177,4 @@ export class FeedService {
   }
 }
 
-export const feedService = new FeedService(storageService);
+export const feedService = new FeedService(storageService, feedCacheService);

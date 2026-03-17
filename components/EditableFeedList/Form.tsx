@@ -44,7 +44,7 @@ export function Form({ item, loading, onSubmit, onDelete }: FormProps) {
       }, 300);
     });
     return () => task.cancel();
-  }, []);
+  }, [isNew, feed.name, feed.url]);
 
   return (
     <KeyboardAvoidingView
@@ -112,6 +112,10 @@ export function Form({ item, loading, onSubmit, onDelete }: FormProps) {
             <Picker.Item label="Today" value={1} style={style.pickerItem} />
             <Picker.Item label="Last Week" value={7} style={style.pickerItem} />
           </Picker>
+          <Text style={style.formPickerlabel}>
+            Articles older than this value, and feeds with no remaining
+            articles, will not be shown
+          </Text>
         </View>
       </View>
 
@@ -168,6 +172,7 @@ function useStyles() {
     paddingVertical: sizes.s0_50,
     paddingHorizontal: sizes.s1,
     borderWidth: 2,
+    borderColor: colors.borderDark,
   };
   const buttonText: TextStyle = {
     fontSize: fonts.marginP,
