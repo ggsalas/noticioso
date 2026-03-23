@@ -3,10 +3,7 @@ import sanitize from "safe-html";
 import { storageService, StorageService } from "./StorageService";
 import { feedCacheService, FeedCacheService } from "./FeedCacheService";
 import type { Feed, FeedData, FeedContentItem, ParsedFeed } from "~/types";
-import {
-  detectFeedType,
-  normalizeToChannel,
-} from "@/lib/feedSchema";
+import { detectFeedType, normalizeToChannel } from "@/lib/feedSchema";
 
 const FEEDS_LIST_KEY = "@noticioso-feedList";
 
@@ -44,7 +41,7 @@ export class FeedService {
       }
 
       const data = await res.text();
-      const rawParsed = this.xmlParser.parse(data) as ParsedFeed;
+      const rawParsed: ParsedFeed = this.xmlParser.parse(data);
 
       // Detect feed type and validate
       const feedType = detectFeedType(rawParsed);
@@ -58,27 +55,7 @@ export class FeedService {
       const channel = normalizeToChannel(rawParsed);
 
       // Apply date filtering based on feed settings
-      const currentTime = new Date().getTime();
-      const date24HoursAgo = new Date(currentTime - 24 * 60 * 60 * 1000);
-      const date7daysAgo = new Date(currentTime - 24 * 60 * 60 * 1000 * 7);
-
-      const items = channel.item
-        ?.filter((item: FeedContentItem) => {
-          const itemDate = new Date(Date.parse(item.pubDate));
-          const isFromLast24Hs = itemDate.getTime() > date24HoursAgo.getTime();
-          const isFromLast7days = itemDate.getTime() > date7daysAgo.getTime();
-
-          return feed?.oldestArticle === 7 ? isFromLast7days : isFromLast24Hs;
-        })
-        // Sanitize descriptions
-        .map((item: FeedContentItem) => {
-          if (this.isHTML(item.description)) {
-            const description = this.sanitizeContent(item.description);
-            return { ...item, description };
-          } else {
-            return item;
-          }
-        });
+      const items = this.filterByDate(channel.item, feed?.oldestArticle);
 
       // Build the normalized FeedData
       const feedContent: FeedData = {
@@ -87,7 +64,12 @@ export class FeedService {
         rss: {
           channel: {
             ...channel,
-            item: items,
+            item: items
+              ? items.map(({ description, ...rest }) => ({
+                  ...rest,
+                  description: this.sanitizeContent(description),
+                }))
+              : [],
           },
         },
       };
@@ -190,14 +172,37 @@ export class FeedService {
   };
 
   private sanitizeContent(content: string): string {
-    return sanitize(content, {
-      allowedTags: [],
-    });
+    if (this.isHTML(content)) {
+      return sanitize(content, { allowedTags: [] });
+    } else {
+      return content;
+    }
   }
 
   private isHTML(str: string): boolean {
     const htmlPattern = /<[a-z][\s\S]*>/i;
     return htmlPattern.test(str);
+  }
+
+  private filterByDate(
+    items: FeedContentItem[] | undefined,
+    oldestArticle: number | undefined,
+  ): FeedContentItem[] | undefined {
+    if (!items) return undefined;
+
+    const threshold = new Date(
+      Date.now() - (oldestArticle ?? 1) * 24 * 60 * 60 * 1000,
+    );
+
+    return items.filter((item) => {
+      // Include items without pubDate
+      if (!item.pubDate) return true;
+
+      const itemDate = new Date(item.pubDate);
+      if (isNaN(itemDate.getTime())) return true;
+
+      return itemDate.getTime() > threshold.getTime();
+    });
   }
 }
 
