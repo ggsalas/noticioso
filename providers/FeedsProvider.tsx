@@ -9,7 +9,7 @@ import {
 import { useAsyncFn } from "../hooks/useAsyncFn";
 import { feedService } from "@/services/FeedService";
 import { feedCacheService } from "@/services/FeedCacheService";
-import { allSettledBatched } from "@/lib/allSettledBatched";
+import { batchPromises } from "@/lib/batchPromises";
 import { Feed } from "@/types";
 
 const PREFETCH_BATCH_SIZE = 5;
@@ -60,27 +60,41 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
     null,
   );
 
+  // Fetch feed counts from network and optionally merge with existing counts
+  const fetchFeedCounts = async (
+    feeds: Feed[],
+    existingCounts?: Record<string, number>,
+  ): Promise<{ counts: Record<string, number>; anySuccess: boolean }> => {
+    const counts: Record<string, number> = existingCounts
+      ? { ...existingCounts }
+      : {};
+
+    const results = await batchPromises(
+      feeds.map((feed) => () => feedService.getFeedContent(feed.url)),
+      PREFETCH_BATCH_SIZE,
+    );
+
+    let anySuccess = false;
+    results.forEach((result, i) => {
+      if (result.status === "fulfilled") {
+        counts[feeds[i].url] = result.value.rss?.channel?.item?.length ?? 0;
+        anySuccess = true;
+      }
+    });
+
+    return { counts, anySuccess };
+  };
+
   const refreshAllFeeds = useCallback(async () => {
     const feeds = data;
     if (!feeds || feeds.length === 0) return;
 
     setPrefetching(true);
     try {
-      const results = await allSettledBatched(
-        feeds.map((feed) => () => feedService.getFeedContent(feed.url)),
-        PREFETCH_BATCH_SIZE,
+      const { counts, anySuccess } = await fetchFeedCounts(
+        feeds,
+        feedArticleCounts,
       );
-
-      const counts: Record<string, number> = { ...feedArticleCounts };
-      let anySuccess = false;
-
-      results.forEach((result, i) => {
-        if (result.status === "fulfilled") {
-          counts[feeds[i].url] = result.value.rss?.channel?.item?.length ?? 0;
-          anySuccess = true;
-        }
-      });
-
       setFeedArticleCounts(counts);
 
       if (anySuccess) {
@@ -120,25 +134,10 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
           FORCE_REFRESH_TIME;
 
       if (needsRefresh) {
-        // refreshAllFeeds depends on `data` so we inline it here to avoid
-        // the stale-closure issue from calling the memoized version before counts are set
         setPrefetching(true);
         try {
-          const results = await allSettledBatched(
-            data.map((feed) => () => feedService.getFeedContent(feed.url)),
-            PREFETCH_BATCH_SIZE,
-          );
-
-          let anySuccess = false;
-          results.forEach((result, i) => {
-            if (result.status === "fulfilled") {
-              counts[data[i].url] =
-                result.value.rss?.channel?.item?.length ?? 0;
-              anySuccess = true;
-            }
-          });
-
-          setFeedArticleCounts({ ...counts });
+          const { counts: newCounts, anySuccess } = await fetchFeedCounts(data);
+          setFeedArticleCounts(newCounts);
 
           if (anySuccess) {
             const now = new Date().toISOString();

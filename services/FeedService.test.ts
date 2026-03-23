@@ -90,10 +90,13 @@ describe("FeedService", () => {
       expect(result).toEqual(mockFeeds);
     });
 
-    it("should throw error when no feeds found", async () => {
+    it("should return empty array when no feeds found", async () => {
       mockStorage.getItem.mockResolvedValue(null);
 
-      await expect(feedService.getFeeds()).rejects.toThrow("No feeds found");
+      const result = await feedService.getFeeds();
+
+      expect(mockStorage.getItem).toHaveBeenCalledWith("@noticioso-feedList");
+      expect(result).toEqual([]);
     });
   });
 
