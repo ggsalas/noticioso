@@ -146,21 +146,42 @@ export class FeedService {
   };
 
   importFeeds = async (data: string): Promise<boolean> => {
-    const feeds = JSON.parse(data) as Feed[];
-    const hasItems = feeds.length > 0;
-    const hasValues =
-      feeds[0].name &&
-      feeds[0].url &&
-      feeds[0].oldestArticle >= 1 &&
-      feeds[0].lang;
-
-    if (hasItems && hasValues) {
-      await this.storage.setItem(FEEDS_LIST_KEY, feeds);
-      return true;
-    } else {
-      throw new Error("Data has incorrect format");
+    let feeds: unknown;
+    try {
+      feeds = JSON.parse(data);
+    } catch {
+      throw new Error("Invalid JSON format");
     }
+
+    if (!Array.isArray(feeds) || feeds.length === 0) {
+      throw new Error("Data must be a non-empty array");
+    }
+
+    for (let i = 0; i < feeds.length; i++) {
+      const feed = feeds[i];
+      if (!this.isValidFeed(feed)) {
+        throw new Error(`Invalid feed at index ${i}: ${JSON.stringify(feed)}`);
+      }
+    }
+
+    await this.storage.setItem(FEEDS_LIST_KEY, feeds as Feed[]);
+    return true;
   };
+
+  private isValidFeed(feed: unknown): feed is Feed {
+    const f = feed as Feed;
+    return !!(
+      f.id &&
+      typeof f.name === "string" &&
+      f.name &&
+      typeof f.url === "string" &&
+      f.url &&
+      typeof f.oldestArticle === "number" &&
+      f.oldestArticle >= 1 &&
+      typeof f.lang === "string" &&
+      f.lang
+    );
+  }
 
   removeAllFeeds = async (): Promise<void> => {
     await this.storage.setItem(FEEDS_LIST_KEY, []);

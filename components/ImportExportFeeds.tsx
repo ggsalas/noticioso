@@ -2,7 +2,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View, Alert } from "react-native";
 import { useFeedsContext } from "@/providers/FeedsProvider";
 import { useThemeContext } from "@/theme/ThemeProvider";
 
@@ -29,9 +29,9 @@ export function ImportExportFeeds() {
         dialogTitle: "Export feeds",
         UTI: "public.json",
       });
-      setSuccess("Feeds exported successfully");
+      setSuccess("✅ Feeds exported successfully!");
     } catch (e) {
-      setError(`Export failed: ${(e as Error).message}`);
+      setError(`⚠️ Export failed: ${(e as Error).message}`);
     } finally {
       setLoading(false);
     }
@@ -40,6 +40,25 @@ export function ImportExportFeeds() {
   const handleImport = async () => {
     setError(null);
     setSuccess(null);
+
+    Alert.alert(
+      "Import feeds",
+      "This operation will remove all your current feeds and replace them with the imported ones. This action cannot be undone. Are you sure you want to continue?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Import",
+          style: "destructive",
+          onPress: () => doImport(),
+        },
+      ],
+    );
+  };
+
+  const doImport = async () => {
     setLoading(true);
 
     try {
@@ -60,10 +79,12 @@ export function ImportExportFeeds() {
 
       const ok = await importFeeds(json);
       if (ok) {
-        setSuccess("Feeds imported successfully");
+        setSuccess(
+          "✅ Feeds imported successfully! Your feed list has been updated.",
+        );
       }
     } catch (e) {
-      setError(`Import failed: ${(e as Error).message}`);
+      setError(`⚠️ Import failed: ${(e as Error).message}`);
     } finally {
       setLoading(false);
     }
@@ -72,9 +93,6 @@ export function ImportExportFeeds() {
   return (
     <View style={s.container}>
       <Text style={s.title}>Your Data</Text>
-
-      {error && <Text style={s.error}>{error}</Text>}
-      {success && <Text style={s.success}>{success}</Text>}
 
       <View style={s.buttons}>
         <Pressable style={s.button} onPress={handleExport} disabled={loading}>
@@ -85,6 +103,9 @@ export function ImportExportFeeds() {
           <Text style={s.buttonText}>Import</Text>
         </Pressable>
       </View>
+
+      {error && <Text style={s.error}>{error}</Text>}
+      {success && <Text style={s.success}>{success}</Text>}
     </View>
   );
 }
@@ -127,6 +148,9 @@ function useStyles() {
     success: {
       color: colors.text,
       fontSize: fonts.fontSizeSmall,
+      textAlign: "center",
+      padding: sizes.s1,
+      backgroundColor: colors.backgroundLight,
     },
   });
 

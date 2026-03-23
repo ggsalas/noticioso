@@ -151,4 +151,44 @@ describe("FeedService", () => {
       expect(mockStorage.setItem).toHaveBeenCalledWith("@noticioso-feedList", [existingFeeds[1]]);
     });
   });
+
+  describe("importFeeds", () => {
+    it("should import valid feeds", async () => {
+      const validFeeds = [
+        { id: "1", name: "Feed 1", url: "https://example1.com", oldestArticle: 1 as const, lang: "en" as const },
+        { id: "2", name: "Feed 2", url: "https://example2.com", oldestArticle: 7 as const, lang: "es" as const },
+      ];
+
+      mockStorage.setItem.mockResolvedValue(undefined);
+
+      const result = await feedService.importFeeds(JSON.stringify(validFeeds));
+
+      expect(result).toBe(true);
+      expect(mockStorage.setItem).toHaveBeenCalledWith("@noticioso-feedList", validFeeds);
+    });
+
+    it("should throw error for invalid JSON", async () => {
+      await expect(feedService.importFeeds("not valid json")).rejects.toThrow("Invalid JSON format");
+    });
+
+    it("should throw error for empty array", async () => {
+      await expect(feedService.importFeeds("[]")).rejects.toThrow("Data must be a non-empty array");
+    });
+
+    it("should throw error for invalid feed data", async () => {
+      const invalidFeeds = [
+        { id: "1", name: "", url: "https://example.com", oldestArticle: 1 as const, lang: "en" as const },
+      ];
+
+      await expect(feedService.importFeeds(JSON.stringify(invalidFeeds))).rejects.toThrow("Invalid feed at index 0");
+    });
+
+    it("should throw error when oldestArticle is less than 1", async () => {
+      const invalidFeeds = [
+        { id: "1", name: "Feed", url: "https://example.com", oldestArticle: 0 as const, lang: "en" as const },
+      ];
+
+      await expect(feedService.importFeeds(JSON.stringify(invalidFeeds))).rejects.toThrow("Invalid feed at index 0");
+    });
+  });
 });
