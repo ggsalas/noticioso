@@ -2,7 +2,11 @@ import { XMLParser } from "fast-xml-parser";
 import sanitize from "safe-html";
 import { storageService, StorageService } from "./StorageService";
 import { feedCacheService, FeedCacheService } from "./FeedCacheService";
-import type { Feed, FeedData, FeedContentItem } from "~/types";
+import type { Feed, FeedData, FeedContentItem, ParsedFeed } from "~/types";
+import {
+  detectFeedType,
+  normalizeToChannel,
+} from "@/lib/feedSchema";
 
 const FEEDS_LIST_KEY = "@noticioso-feedList";
 
@@ -40,14 +44,25 @@ export class FeedService {
       }
 
       const data = await res.text();
-      const feedContent: FeedData = this.xmlParser.parse(data);
+      const rawParsed = this.xmlParser.parse(data) as ParsedFeed;
+
+      // Detect feed type and validate
+      const feedType = detectFeedType(rawParsed);
+      if (feedType === "unknown") {
+        throw new Error(
+          "Unsupported feed format. Only RSS, Atom, and RDF feeds are supported.",
+        );
+      }
+
+      // Normalize to common channel structure
+      const channel = normalizeToChannel(rawParsed);
 
       // Apply date filtering based on feed settings
       const currentTime = new Date().getTime();
       const date24HoursAgo = new Date(currentTime - 24 * 60 * 60 * 1000);
       const date7daysAgo = new Date(currentTime - 24 * 60 * 60 * 1000 * 7);
 
-      const items = feedContent.rss.channel.item
+      const items = channel.item
         ?.filter((item: FeedContentItem) => {
           const itemDate = new Date(Date.parse(item.pubDate));
           const isFromLast24Hs = itemDate.getTime() > date24HoursAgo.getTime();
@@ -65,8 +80,17 @@ export class FeedService {
           }
         });
 
-      feedContent.rss.channel.item = items;
-      feedContent.date = new Date();
+      // Build the normalized FeedData
+      const feedContent: FeedData = {
+        date: new Date(),
+        feedType,
+        rss: {
+          channel: {
+            ...channel,
+            item: items,
+          },
+        },
+      };
 
       await this.cache.set(url, feedContent);
 
