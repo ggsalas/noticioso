@@ -1,7 +1,7 @@
 import { parseHTML } from "linkedom";
 import { XMLParser } from "fast-xml-parser";
 
-const xmlParser = new XMLParser();
+export type Fetcher = typeof fetch;
 
 const COMMON_PATHS = [
   "/feed",
@@ -28,83 +28,91 @@ function isUrl(input: string): boolean {
   return /^https?:\/\//.test(input) || (/\./.test(input) && !/\s/.test(input));
 }
 
-async function safeFetch(url: string): Promise<string | null> {
-  try {
-    const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
-    const status = res.status;
-    if (status < 200 || status >= 300) return null;
-    return await res.text();
-  } catch {
-    return null;
-  }
-}
-
-async function checkFeed(
-  url: string,
-): Promise<{ valid: boolean; title?: string }> {
-  try {
-    const text = await safeFetch(url);
-    if (!text) return { valid: false };
-    if (!isFeedXML(text)) return { valid: false };
-
-    const data = xmlParser.parse(text);
-    const title: string =
-      data?.rss?.channel?.title ??
-      data?.feed?.title ??
-      data?.["rdf:RDF"]?.channel?.title ??
-      undefined;
-
-    return { valid: true, title: title };
-  } catch {
-    return { valid: false };
-  }
-}
-
-async function searchDuckDuckGo(
-  query: string,
-  maxResults: number = 3,
-): Promise<string[]> {
-  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query + " rss")}`;
-  const html = await safeFetch(url);
-  if (!html) return [];
-
-  const { document } = parseHTML(html);
-
-  const results: string[] = [];
-  document.querySelectorAll(".result__url").forEach((el) => {
-    const text = el.textContent?.trim();
-    if (text) {
-      const normalized = text.startsWith("http") ? text : `https://${text}`;
-      try {
-        new URL(normalized); // validate
-        results.push(normalized);
-      } catch {}
-    }
-  });
-
-  return [...new Set(results)].slice(0, maxResults);
-}
-
 export class FeedDiscoveryService {
+  private fetcher: Fetcher;
+  private xmlParser: XMLParser;
+
+  constructor(fetcher: Fetcher = fetch) {
+    this.fetcher = fetcher;
+    this.xmlParser = new XMLParser();
+  }
+
+  private async safeFetch(url: string): Promise<string | null> {
+    try {
+      const res = await this.fetcher(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+      const status = res.status;
+      if (status < 200 || status >= 300) return null;
+      return await res.text();
+    } catch {
+      return null;
+    }
+  }
+
+  private async checkFeed(
+    url: string,
+  ): Promise<{ valid: boolean; title?: string }> {
+    try {
+      const text = await this.safeFetch(url);
+      if (!text) return { valid: false };
+      if (!isFeedXML(text)) return { valid: false };
+
+      const data = this.xmlParser.parse(text);
+      const title: string =
+        data?.rss?.channel?.title ??
+        data?.feed?.title ??
+        data?.["rdf:RDF"]?.channel?.title ??
+        undefined;
+
+      return { valid: true, title: title };
+    } catch {
+      return { valid: false };
+    }
+  }
+
+  private async searchDuckDuckGo(
+    query: string,
+    maxResults: number = 3,
+  ): Promise<string[]> {
+    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query + " rss")}`;
+    const html = await this.safeFetch(url);
+    if (!html) return [];
+
+    const { document } = parseHTML(html);
+
+    const results: string[] = [];
+    document.querySelectorAll(".result__url").forEach((el) => {
+      const text = el.textContent?.trim();
+      if (text) {
+        const normalized = text.startsWith("http") ? text : `https://${text}`;
+        try {
+          new URL(normalized); // validate
+          results.push(normalized);
+        } catch {}
+      }
+    });
+
+    return [...new Set(results)].slice(0, maxResults);
+  }
+
   discoverFeeds = async (input: string): Promise<DiscoveredFeed[]> => {
     const trimmed = input.trim();
 
     try {
       if (isUrl(trimmed)) {
         const normalizedUrl = this.normalizeUrl(trimmed);
-        const html = await safeFetch(normalizedUrl);
+        const html = await this.safeFetch(normalizedUrl);
         if (!html) throw new Error(`Failed to fetch ${normalizedUrl}`);
 
         return this.extractFeedLinks(html, normalizedUrl, true);
       } else {
         // Search mode: query DDG, get top 3 sites, extract feeds from each
-        const siteUrls = await searchDuckDuckGo(trimmed);
+        const siteUrls = await this.searchDuckDuckGo(trimmed);
         const allFeeds: DiscoveredFeed[] = [];
         const seen = new Set<string>();
 
         for (const siteUrl of siteUrls) {
           try {
-            const html = await safeFetch(siteUrl);
+            const html = await this.safeFetch(siteUrl);
             if (!html) continue;
 
             if (isFeedXML(html)) {
@@ -165,7 +173,7 @@ export class FeedDiscoveryService {
       // 3 — test common feed paths
       for (const path of COMMON_PATHS) {
         const candidate = new URL(path, baseUrl).href;
-        if ((await checkFeed(candidate)).valid) {
+        if ((await this.checkFeed(candidate)).valid) {
           feeds.add(candidate);
         }
       }
@@ -185,9 +193,9 @@ export class FeedDiscoveryService {
       for (const sitemapPath of SITEMAP_PATHS) {
         try {
           const sitemapURL = new URL(sitemapPath, baseUrl).href;
-          const xml = await safeFetch(sitemapURL);
+          const xml = await this.safeFetch(sitemapURL);
           if (!xml) continue;
-          const data = xmlParser.parse(xml);
+          const data = this.xmlParser.parse(xml);
           const urls: string[] =
             data?.urlset?.url?.map((u: { loc: string }) => u.loc) ??
             data?.sitemapindex?.sitemap?.map((s: { loc: string }) => s.loc) ??
@@ -203,7 +211,7 @@ export class FeedDiscoveryService {
     const feedUrls = Array.from(feeds).slice(0, 10); // limit to 10 candidates
     const results = await Promise.all(
       feedUrls.map(async (url) => {
-        const { valid, title } = await checkFeed(url);
+        const { valid, title } = await this.checkFeed(url);
         return { url, valid, title };
       }),
     );
@@ -223,4 +231,4 @@ export class FeedDiscoveryService {
   }
 }
 
-export const feedDiscoveryService = new FeedDiscoveryService();
+export const feedDiscoveryService = new FeedDiscoveryService(fetch);
