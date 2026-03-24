@@ -1,5 +1,6 @@
 import { parseHTML } from "linkedom";
 import { XMLParser } from "fast-xml-parser";
+import { parseAndNormalizeFeed } from "@/lib/feedSchema";
 
 export type Fetcher = typeof fetch;
 
@@ -20,10 +21,6 @@ export type DiscoveredFeed = {
   type: string;
 };
 
-function isFeedXML(text: string): boolean {
-  return /<rss|<feed|<rdf:RDF/i.test(text);
-}
-
 function isUrl(input: string): boolean {
   return /^https?:\/\//.test(input) || (/\./.test(input) && !/\s/.test(input));
 }
@@ -39,7 +36,9 @@ export class FeedDiscoveryService {
 
   private async safeFetch(url: string): Promise<string | null> {
     try {
-      const res = await this.fetcher(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+      const res = await this.fetcher(url, {
+        headers: { "User-Agent": "Mozilla/5.0" },
+      });
       const status = res.status;
       if (status < 200 || status >= 300) return null;
       return await res.text();
@@ -48,25 +47,27 @@ export class FeedDiscoveryService {
     }
   }
 
+  private tryParseFeed(
+    text: string | null,
+  ): import("@/lib/feedSchema").FeedMetadata | null {
+    try {
+      return parseAndNormalizeFeed(text);
+    } catch {
+      return null;
+    }
+  }
+
   private async checkFeed(
     url: string,
   ): Promise<{ valid: boolean; title?: string }> {
-    try {
-      const text = await this.safeFetch(url);
-      if (!text) return { valid: false };
-      if (!isFeedXML(text)) return { valid: false };
+    const text = await this.safeFetch(url);
+    const metadata = this.tryParseFeed(text);
 
-      const data = this.xmlParser.parse(text);
-      const title: string =
-        data?.rss?.channel?.title ??
-        data?.feed?.title ??
-        data?.["rdf:RDF"]?.channel?.title ??
-        undefined;
-
-      return { valid: true, title: title };
-    } catch {
+    if (!metadata) {
       return { valid: false };
     }
+
+    return { valid: true, title: metadata.channel.title };
   }
 
   private async searchDuckDuckGo(
@@ -112,19 +113,23 @@ export class FeedDiscoveryService {
 
         for (const siteUrl of siteUrls) {
           try {
-            const html = await this.safeFetch(siteUrl);
-            if (!html) continue;
+            const site = await this.safeFetch(siteUrl);
+            if (!site) continue;
 
-            if (isFeedXML(html)) {
+            const parsedFeed = this.tryParseFeed(site);
+            if (parsedFeed) {
               if (!seen.has(siteUrl)) {
                 seen.add(siteUrl);
-                allFeeds.push({ title: siteUrl, url: siteUrl, type: "" });
+                allFeeds.push({
+                  title: parsedFeed.channel.title,
+                  url: siteUrl,
+                  type: parsedFeed.feedType,
+                });
               }
               continue;
             }
 
-            const feeds = await this.extractFeedLinks(html, siteUrl);
-
+            const feeds = await this.extractFeedLinks(site, siteUrl);
             for (const feed of feeds) {
               if (!seen.has(feed.url)) {
                 seen.add(feed.url);

@@ -1,21 +1,16 @@
-import { XMLParser } from "fast-xml-parser";
 import sanitize from "safe-html";
 import { storageService, StorageService } from "./StorageService";
 import { feedCacheService, FeedCacheService } from "./FeedCacheService";
-import type { Feed, FeedData, FeedContentItem, ParsedFeed } from "~/types";
-import { detectFeedType, normalizeToChannel } from "@/lib/feedSchema";
+import type { Feed, FeedData, FeedContentItem } from "~/types";
+import { parseAndNormalizeFeed } from "@/lib/feedSchema";
 
 const FEEDS_LIST_KEY = "@noticioso-feedList";
 
 export class FeedService {
-  private xmlParser: XMLParser;
-
   constructor(
     private storage: StorageService = storageService,
     private cache: FeedCacheService = feedCacheService,
-  ) {
-    this.xmlParser = new XMLParser();
-  }
+  ) {}
 
   getFeedContent = async (
     url: string,
@@ -41,20 +36,7 @@ export class FeedService {
       }
 
       const data = await res.text();
-      const rawParsed: ParsedFeed = this.xmlParser.parse(data);
-
-      // Detect feed type and validate
-      const feedType = detectFeedType(rawParsed);
-      if (feedType === "unknown") {
-        throw new Error(
-          "Unsupported feed format. Only RSS, Atom, and RDF feeds are supported.",
-        );
-      }
-
-      // Normalize to common channel structure
-      const channel = normalizeToChannel(rawParsed);
-
-      // Apply date filtering based on feed settings
+      const { feedType, channel } = parseAndNormalizeFeed(data);
       const items = this.filterByDate(channel.item, feed?.oldestArticle);
 
       // Build the normalized FeedData
