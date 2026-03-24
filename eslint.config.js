@@ -6,6 +6,10 @@ module.exports = defineConfig([
   expoConfig,
   {
     ignores: ["dist/*"],
+    files: ["**/*.test.ts", "**/*.test.tsx"],
+    rules: {
+      "import/first": "off",
+    },
     settings: {
       "import/resolver": {
         typescript: {

@@ -51,11 +51,43 @@ export type Channel = {
   item: FeedContent;
 };
 
+// RSS feed structure
+export type RSSFeed = {
+  rss: {
+    channel: Channel;
+  };
+};
+
+// Atom feed structure
+export type AtomFeed = {
+  feed: {
+    title: string;
+    subtitle?: string;
+    link?: string | { href: string } | Array<{ href: string }>;
+    updated?: string;
+    entry: FeedContentItem[];
+  };
+};
+
+// RDF feed structure
+export type RDFeed = {
+  "rdf:RDF": {
+    channel: Channel;
+  };
+};
+
+// Union of all supported feed formats
+export type ParsedFeed = RSSFeed | AtomFeed | RDFeed;
+
+// Detect which type of feed this is
+export type FeedType = "rss" | "atom" | "rdf" | "unknown";
+
 export type FeedData = {
   date: Date;
   rss: {
     channel: Channel;
   };
+  feedType: FeedType;
 };
 
 // UI
