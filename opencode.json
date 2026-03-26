@@ -1,0 +1,65 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "reserved": 4000
+  },
+
+  "default_agent": "developer",
+
+  "agent": {
+    "architect": {
+      "description": "System design and architecture decisions",
+      "model": "Big Pickle",
+      "prompt": "Follow the Architect role strictly. Focus on structure, scalability, and patterns for React Native applications.",
+      "tools": {
+        "write": false,
+        "edit": false
+      }
+    },
+
+    "developer": {
+      "description": "Implementation of features and fixes",
+      "model": "Mimo V2 Pro Free",
+      "prompt": "Write clean, maintainable, production-ready TypeScript/React Native code. Follow project conventions and best practices.",
+      "tools": {
+        "write": true,
+        "edit": true
+      }
+    },
+
+    "qa": {
+      "description": "Quality assurance and bug detection",
+      "model": "Mimo V2 Omni Free",
+      "prompt": "Find bugs, edge cases, and performance issues in React Native code. Be critical and thorough.",
+      "tools": {
+        "write": false,
+        "edit": false
+      }
+    },
+
+    "local": {
+      "description": "Local model agent optimized for low context",
+      "model": "MiniMax 12.5 Free",
+      "mode": "primary",
+      "steps": 3,
+      "temperature": 0.2,
+      "prompt": "Apply changes directly. Return ONLY code. No explanations. Be extremely concise. Only use the provided file. Do not load additional files unless strictly necessary. Keep responses under 200 lines.",
+      "tools": {
+        "write": true,
+        "edit": true,
+        "bash": true,
+        "read": true,
+        "glob": false,
+        "grep": false,
+        "webfetch": false,
+        "websearch": false,
+        "codesearch": false,
+        "skill": false,
+        "task": false
+      }
+    }
+  }
+}
