@@ -12,7 +12,7 @@
   "agent": {
     "architect": {
       "description": "System design and architecture decisions",
-      "model": "Big Pickle",
+      "model": "opencode/nemotron-3-super-free",
       "prompt": "Follow the Architect role strictly. Focus on structure, scalability, and patterns for React Native applications.",
       "tools": {
         "write": false,
@@ -22,7 +22,7 @@
 
     "developer": {
       "description": "Implementation of features and fixes",
-      "model": "Mimo V2 Pro Free",
+      "model": "opencode/big-pickle",
       "prompt": "Write clean, maintainable, production-ready TypeScript/React Native code. Follow project conventions and best practices.",
       "tools": {
         "write": true,
@@ -32,7 +32,7 @@
 
     "qa": {
       "description": "Quality assurance and bug detection",
-      "model": "Mimo V2 Omni Free",
+      "model": "opencode/mimo-v2-omni-free",
       "prompt": "Find bugs, edge cases, and performance issues in React Native code. Be critical and thorough.",
       "tools": {
         "write": false,
@@ -42,7 +42,6 @@
 
     "local": {
       "description": "Local model agent optimized for low context",
-      "model": "MiniMax 12.5 Free",
       "mode": "primary",
       "steps": 3,
       "temperature": 0.2,

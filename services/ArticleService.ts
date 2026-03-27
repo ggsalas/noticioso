@@ -1,9 +1,24 @@
 import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
+import { articleCacheService } from "./ArticleCacheService";
 import type { Article } from "~/types";
 
 export class ArticleService {
   getArticle = async (url: string): Promise<Article> => {
+    // 1. Try cache first (returns null on miss, article on hit with LRU update)
+    const cached = await articleCacheService.get(url);
+    if (cached) return cached;
+
+    // 2. Fetch and parse only on cache miss
+    const article = await this.fetchAndParseArticle(url);
+
+    // 3. Store in cache (set handles removal if needed)
+    await articleCacheService.set(url, article);
+
+    return article;
+  };
+
+  private fetchAndParseArticle = async (url: string): Promise<Article> => {
     try {
       const res = await fetch(url);
 
