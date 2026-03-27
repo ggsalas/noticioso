@@ -3,7 +3,9 @@ import { router } from "expo-router";
 
 type ReadabilityArticle = ReturnType<Readability["parse"]>;
 
-export type Article = ReadabilityArticle;
+export type Article = ReadabilityArticle & {
+  heroImage?: string;
+};
 
 export type OldestArticle = 1 | 7;
 

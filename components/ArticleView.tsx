@@ -25,7 +25,11 @@ export function ArticleView({ article_url, actions }: Props) {
 
   const getContent = () => {
     if (!article) return "";
-    let content = `<h1 class="_title_">${article.title}</h1>`;
+    let content = "";
+    content += article.heroImage
+      ? `<img src="${article.heroImage}" class="_hero-image_"></img>`
+      : "";
+    content += `<h1 class="_title_">${article.title}</h1>`;
     if (article.byline) {
       content += `<h2 class="_author_">${article.byline}</h2>`;
     }
