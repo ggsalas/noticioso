@@ -1,5 +1,10 @@
 import { storageService, StorageService } from "./StorageService";
-import type { Article, ArticleMetadata, ArticleCacheEntry, ArticleCacheIndex } from "~/types";
+import type {
+  Article,
+  ArticleMetadata,
+  ArticleCacheEntry,
+  ArticleCacheIndex,
+} from "~/types";
 
 const ARTICLE_CACHE_PREFIX = "@noticioso-articleCache-";
 const ARTICLE_INDEX_KEY = "@noticioso-articleCache-index";
@@ -10,9 +15,10 @@ const MAX_ARTICLE_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 export class ArticleCacheService {
   constructor(private storage: StorageService = storageService) {}
 
-  // Public methods
   get = async (url: string): Promise<Article | null> => {
-    const entry = await this.storage.getItem<ArticleCacheEntry>(this.cacheKey(url));
+    const entry = await this.storage.getItem<ArticleCacheEntry>(
+      this.cacheKey(url),
+    );
     if (!entry) return null;
 
     // Update lastAccessedAt for LRU
@@ -30,7 +36,9 @@ export class ArticleCacheService {
   };
 
   getMetadata = async (url: string): Promise<ArticleMetadata | null> => {
-    const entry = await this.storage.getItem<ArticleCacheEntry>(this.cacheKey(url));
+    const entry = await this.storage.getItem<ArticleCacheEntry>(
+      this.cacheKey(url),
+    );
     if (!entry) return null;
 
     return {
@@ -58,7 +66,6 @@ export class ArticleCacheService {
     await this.addToIndex(url, entry.cachedAt);
   };
 
-  // Private methods
   private delete = async (url: string): Promise<void> => {
     await this.storage.removeItem(this.cacheKey(url));
     await this.removeFromIndex(url);
@@ -68,7 +75,8 @@ export class ArticleCacheService {
 
   // Index management
   private getIndex = async (): Promise<ArticleCacheIndex> => {
-    const index = await this.storage.getItem<ArticleCacheIndex>(ARTICLE_INDEX_KEY);
+    const index =
+      await this.storage.getItem<ArticleCacheIndex>(ARTICLE_INDEX_KEY);
     return index || {};
   };
 
@@ -112,7 +120,7 @@ export class ArticleCacheService {
     const oldest = entries.reduce((prev, curr) =>
       new Date(prev[1].lastAccessedAt) < new Date(curr[1].lastAccessedAt)
         ? prev
-        : curr
+        : curr,
     );
 
     await this.delete(oldest[0]);

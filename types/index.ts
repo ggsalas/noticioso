@@ -34,6 +34,9 @@ export type FeedContentItem = {
   author?: string;
   description: string; // can have images
   "content:encoded"?: string; // can have images
+  // Enhanced fields from article cache
+  heroImage?: string;
+  excerpt?: string;
   /* guid
    *
    * media:description

@@ -1,6 +1,10 @@
 import sanitize from "safe-html";
 import { storageService, StorageService } from "./StorageService";
 import { feedCacheService, FeedCacheService } from "./FeedCacheService";
+import {
+  articleCacheService,
+  ArticleCacheService,
+} from "./ArticleCacheService";
 import type { Feed, FeedData, FeedContentItem } from "~/types";
 import { parseAndNormalizeFeed } from "@/lib/feedSchema";
 
@@ -10,6 +14,7 @@ export class FeedService {
   constructor(
     private storage: StorageService = storageService,
     private cache: FeedCacheService = feedCacheService,
+    private articleCache: ArticleCacheService = articleCacheService,
   ) {}
 
   getFeedContent = async (
@@ -39,6 +44,9 @@ export class FeedService {
       const { feedType, channel } = parseAndNormalizeFeed(data);
       const items = this.filterByDate(channel.item, feed?.oldestArticle);
 
+      // Enhance items with cached article metadata
+      const enhancedItems = await this.enhanceItemsWithCache(items);
+
       // Build the normalized FeedData
       const feedContent: FeedData = {
         date: new Date(),
@@ -46,8 +54,8 @@ export class FeedService {
         rss: {
           channel: {
             ...channel,
-            item: items
-              ? items.map(({ description, ...rest }) => ({
+            item: enhancedItems
+              ? enhancedItems.map(({ description, ...rest }) => ({
                   ...rest,
                   description: this.sanitizeContent(description),
                 }))
@@ -207,6 +215,48 @@ export class FeedService {
       return itemDate.getTime() > threshold.getTime();
     });
   }
+
+  private enhanceItemsWithCache = async (
+    items: FeedContentItem[] | undefined,
+  ): Promise<FeedContentItem[] | undefined> => {
+    if (!items) return undefined;
+
+    // Fetch metadata for all items in parallel
+    const metadataResults = await Promise.all(
+      items.map(async (item) => {
+        try {
+          const metadata = await this.articleCache.getMetadata(item.link);
+          return { item, metadata };
+        } catch {
+          // Gracefully handle individual cache lookup failures
+          return { item, metadata: null };
+        }
+      }),
+    );
+
+    // Map items with enhanced metadata
+    return metadataResults.map(({ item, metadata }) => {
+      if (!metadata) return item;
+
+      // Use byline from cache as author if available, non-empty (after trim), and is a string
+      const hasValidByline =
+        typeof metadata.byline === "string" &&
+        metadata.byline.trim().length > 0;
+
+      return {
+        ...item,
+        // Replace author with byline from cache if valid
+        ...(hasValidByline && { author: metadata.byline }),
+        // Add cached metadata as extended fields
+        ...(metadata.heroImage && { heroImage: metadata.heroImage }),
+        ...(metadata.excerpt && { excerpt: metadata.excerpt }),
+      };
+    });
+  };
 }
 
-export const feedService = new FeedService(storageService, feedCacheService);
+export const feedService = new FeedService(
+  storageService,
+  feedCacheService,
+  articleCacheService,
+);

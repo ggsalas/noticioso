@@ -1,5 +1,7 @@
 import { FeedService } from "./FeedService";
 import { StorageService } from "./StorageService";
+import { FeedCacheService } from "./FeedCacheService";
+import { ArticleCacheService } from "./ArticleCacheService";
 
 const mockStorage = {
   getItem: jest.fn(),
@@ -8,10 +10,24 @@ const mockStorage = {
   clear: jest.fn(),
 };
 
+const mockFeedCache = {
+  get: jest.fn(),
+  set: jest.fn(),
+  delete: jest.fn(),
+};
+
+const mockArticleCache = {
+  getMetadata: jest.fn(),
+};
+
 const mockFetch = jest.fn();
 global.fetch = mockFetch;
 
-const feedService = new FeedService(mockStorage as unknown as StorageService);
+const feedService = new FeedService(
+  mockStorage as unknown as StorageService,
+  mockFeedCache as unknown as FeedCacheService,
+  mockArticleCache as unknown as ArticleCacheService,
+);
 
 describe("FeedService", () => {
   beforeEach(() => {
@@ -53,12 +69,85 @@ describe("FeedService", () => {
         ok: true,
         text: () => Promise.resolve(mockRssXml),
       });
+      mockArticleCache.getMetadata.mockResolvedValue(null);
 
-      const result = await feedService.getFeedContent("https://example.com/rss");
+      const result = await feedService.getFeedContent(
+        "https://example.com/rss",
+      );
 
-      expect(mockFetch).toHaveBeenCalledWith("https://example.com/rss", { method: "GET" });
+      expect(mockFetch).toHaveBeenCalledWith("https://example.com/rss", {
+        method: "GET",
+      });
       expect(result.date).toBeInstanceOf(Date);
       expect(result.rss).toBeDefined();
+    });
+
+    it("should enhance items with cached article metadata", async () => {
+      const mockFeed = {
+        id: "1",
+        name: "Test Feed",
+        url: "https://example.com/rss",
+        oldestArticle: 1 as const,
+        lang: "en" as const,
+      };
+
+      const mockRssXml = `<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+          <channel>
+            <title>Test Feed</title>
+            <item>
+              <title>Article 1</title>
+              <link>https://example.com/article1</link>
+              <pubDate>${new Date().toISOString()}</pubDate>
+              <description>Description 1</description>
+            </item>
+            <item>
+              <title>Article 2</title>
+              <link>https://example.com/article2</link>
+              <pubDate>${new Date().toISOString()}</pubDate>
+              <description>Description 2</description>
+            </item>
+          </channel>
+        </rss>`;
+
+      mockStorage.getItem.mockResolvedValue([mockFeed]);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        text: () => Promise.resolve(mockRssXml),
+      });
+
+      // Mock metadata for first article only
+      mockArticleCache.getMetadata
+        .mockResolvedValueOnce({
+          heroImage: "https://example.com/image1.jpg",
+          byline: "John Doe",
+          title: "Article 1",
+          excerpt: "Excerpt 1",
+        })
+        .mockResolvedValueOnce(null);
+
+      const result = await feedService.getFeedContent(
+        "https://example.com/rss",
+      );
+
+      expect(mockArticleCache.getMetadata).toHaveBeenCalledTimes(2);
+      expect(mockArticleCache.getMetadata).toHaveBeenCalledWith(
+        "https://example.com/article1",
+      );
+      expect(mockArticleCache.getMetadata).toHaveBeenCalledWith(
+        "https://example.com/article2",
+      );
+
+      // First item should have enhanced metadata
+      expect(result.rss.channel.item[0].heroImage).toBe(
+        "https://example.com/image1.jpg",
+      );
+      expect(result.rss.channel.item[0].author).toBe("John Doe");
+      expect(result.rss.channel.item[0].excerpt).toBe("Excerpt 1");
+
+      // Second item should not have enhanced metadata
+      expect(result.rss.channel.item[1].heroImage).toBeUndefined();
+      expect(result.rss.channel.item[1].author).toBeUndefined();
     });
 
     it("should throw error on failed fetch", async () => {
@@ -68,18 +157,33 @@ describe("FeedService", () => {
         status: 404,
         statusText: "Not Found",
       });
+      mockArticleCache.getMetadata.mockResolvedValue(null);
 
       await expect(
-        feedService.getFeedContent("https://example.com/invalid")
-      ).rejects.toThrow("Failed to fetch feed from https://example.com/invalid");
+        feedService.getFeedContent("https://example.com/invalid"),
+      ).rejects.toThrow(
+        "Failed to fetch feed from https://example.com/invalid",
+      );
     });
   });
 
   describe("getFeeds", () => {
     it("should return feeds from storage", async () => {
       const mockFeeds = [
-        { id: "1", name: "Feed 1", url: "https://example1.com", oldestArticle: 1 as const, lang: "en" as const },
-        { id: "2", name: "Feed 2", url: "https://example2.com", oldestArticle: 7 as const, lang: "es" as const },
+        {
+          id: "1",
+          name: "Feed 1",
+          url: "https://example1.com",
+          oldestArticle: 1 as const,
+          lang: "en" as const,
+        },
+        {
+          id: "2",
+          name: "Feed 2",
+          url: "https://example2.com",
+          oldestArticle: 7 as const,
+          lang: "es" as const,
+        },
       ];
 
       mockStorage.getItem.mockResolvedValue(mockFeeds);
@@ -116,7 +220,9 @@ describe("FeedService", () => {
       const result = await feedService.createOrEditFeed(newFeed);
 
       expect(result).toBe(true);
-      expect(mockStorage.setItem).toHaveBeenCalledWith("@noticioso-feedList", [newFeed]);
+      expect(mockStorage.setItem).toHaveBeenCalledWith("@noticioso-feedList", [
+        newFeed,
+      ]);
     });
 
     it("should throw error for invalid feed", async () => {
@@ -130,15 +236,29 @@ describe("FeedService", () => {
 
       mockStorage.getItem.mockResolvedValue([]);
 
-      await expect(feedService.createOrEditFeed(invalidFeed)).rejects.toThrow("Feed cannot be added");
+      await expect(feedService.createOrEditFeed(invalidFeed)).rejects.toThrow(
+        "Feed cannot be added",
+      );
     });
   });
 
   describe("deleteFeed", () => {
     it("should delete existing feed", async () => {
       const existingFeeds = [
-        { id: "1", name: "Feed 1", url: "https://example1.com", oldestArticle: 1 as const, lang: "en" as const },
-        { id: "2", name: "Feed 2", url: "https://example2.com", oldestArticle: 7 as const, lang: "es" as const },
+        {
+          id: "1",
+          name: "Feed 1",
+          url: "https://example1.com",
+          oldestArticle: 1 as const,
+          lang: "en" as const,
+        },
+        {
+          id: "2",
+          name: "Feed 2",
+          url: "https://example2.com",
+          oldestArticle: 7 as const,
+          lang: "es" as const,
+        },
       ];
       const feedToDelete = existingFeeds[0];
 
@@ -148,15 +268,29 @@ describe("FeedService", () => {
       const result = await feedService.deleteFeed(feedToDelete);
 
       expect(result).toBe(true);
-      expect(mockStorage.setItem).toHaveBeenCalledWith("@noticioso-feedList", [existingFeeds[1]]);
+      expect(mockStorage.setItem).toHaveBeenCalledWith("@noticioso-feedList", [
+        existingFeeds[1],
+      ]);
     });
   });
 
   describe("importFeeds", () => {
     it("should import valid feeds", async () => {
       const validFeeds = [
-        { id: "1", name: "Feed 1", url: "https://example1.com", oldestArticle: 1 as const, lang: "en" as const },
-        { id: "2", name: "Feed 2", url: "https://example2.com", oldestArticle: 7 as const, lang: "es" as const },
+        {
+          id: "1",
+          name: "Feed 1",
+          url: "https://example1.com",
+          oldestArticle: 1 as const,
+          lang: "en" as const,
+        },
+        {
+          id: "2",
+          name: "Feed 2",
+          url: "https://example2.com",
+          oldestArticle: 7 as const,
+          lang: "es" as const,
+        },
       ];
 
       mockStorage.setItem.mockResolvedValue(undefined);
@@ -164,31 +298,54 @@ describe("FeedService", () => {
       const result = await feedService.importFeeds(JSON.stringify(validFeeds));
 
       expect(result).toBe(true);
-      expect(mockStorage.setItem).toHaveBeenCalledWith("@noticioso-feedList", validFeeds);
+      expect(mockStorage.setItem).toHaveBeenCalledWith(
+        "@noticioso-feedList",
+        validFeeds,
+      );
     });
 
     it("should throw error for invalid JSON", async () => {
-      await expect(feedService.importFeeds("not valid json")).rejects.toThrow("Invalid JSON format");
+      await expect(feedService.importFeeds("not valid json")).rejects.toThrow(
+        "Invalid JSON format",
+      );
     });
 
     it("should throw error for empty array", async () => {
-      await expect(feedService.importFeeds("[]")).rejects.toThrow("Data must be a non-empty array");
+      await expect(feedService.importFeeds("[]")).rejects.toThrow(
+        "Data must be a non-empty array",
+      );
     });
 
     it("should throw error for invalid feed data", async () => {
       const invalidFeeds = [
-        { id: "1", name: "", url: "https://example.com", oldestArticle: 1 as const, lang: "en" as const },
+        {
+          id: "1",
+          name: "",
+          url: "https://example.com",
+          oldestArticle: 1 as const,
+          lang: "en" as const,
+        },
       ];
 
-      await expect(feedService.importFeeds(JSON.stringify(invalidFeeds))).rejects.toThrow("Invalid feed at index 0");
+      await expect(
+        feedService.importFeeds(JSON.stringify(invalidFeeds)),
+      ).rejects.toThrow("Invalid feed at index 0");
     });
 
     it("should throw error when oldestArticle is less than 1", async () => {
       const invalidFeeds = [
-        { id: "1", name: "Feed", url: "https://example.com", oldestArticle: 0 as const, lang: "en" as const },
+        {
+          id: "1",
+          name: "Feed",
+          url: "https://example.com",
+          oldestArticle: 0 as const,
+          lang: "en" as const,
+        },
       ];
 
-      await expect(feedService.importFeeds(JSON.stringify(invalidFeeds))).rejects.toThrow("Invalid feed at index 0");
+      await expect(
+        feedService.importFeeds(JSON.stringify(invalidFeeds)),
+      ).rejects.toThrow("Invalid feed at index 0");
     });
   });
 });
