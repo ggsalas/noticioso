@@ -24,8 +24,7 @@ export default function FeedPage() {
       feed_url,
     )}/articles/${encodeURIComponent(link)}`;
 
-  // TODO on big screens
-  // ${ description ? '<div class="description">' + description + "</div>" : "" }
+  // TODO: only important articles should have Hero
   const htmlItems =
     content?.length === 0
       ? '<div class="no-new-conent">No new content for this feed</div>'
@@ -84,6 +83,7 @@ export default function FeedPage() {
         width: 100%;
         height: 100%;
         object-fit: cover;
+        object-position: top;
       }
 
       .description {

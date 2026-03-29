@@ -13,7 +13,7 @@ const MAX_ARTICLES = 300;
 const MAX_ARTICLE_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 export class ArticleCacheService {
-  constructor(private storage: StorageService = storageService) {}
+  constructor(private storage: StorageService) {}
 
   get = async (url: string): Promise<Article | null> => {
     const entry = await this.storage.getItem<ArticleCacheEntry>(

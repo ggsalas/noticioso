@@ -10,9 +10,14 @@ export class ArticleService {
     if (cached) return cached;
 
     // 2. Fetch and parse only on cache miss
-    const article = await this.fetchAndParseArticle(url);
+    const article = await this.fetchArticleContent(url);
 
-    // 3. Store in cache (set handles removal if needed)
+    return article;
+  };
+
+  // Fetches article content and saves to cache. Use when cache status is already known.
+  fetchArticleContent = async (url: string): Promise<Article> => {
+    const article = await this.fetchAndParseArticle(url);
     await articleCacheService.set(url, article);
 
     return article;

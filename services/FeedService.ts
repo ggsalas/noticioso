@@ -5,6 +5,7 @@ import {
   articleCacheService,
   ArticleCacheService,
 } from "./ArticleCacheService";
+import { articlePreloader, ArticlePreloader } from "./ArticlePreloader";
 import type { Feed, FeedData, FeedContentItem } from "~/types";
 import { parseAndNormalizeFeed } from "@/lib/feedSchema";
 
@@ -12,9 +13,10 @@ const FEEDS_LIST_KEY = "@noticioso-feedList";
 
 export class FeedService {
   constructor(
-    private storage: StorageService = storageService,
-    private cache: FeedCacheService = feedCacheService,
-    private articleCache: ArticleCacheService = articleCacheService,
+    private storage: StorageService,
+    private cache: FeedCacheService,
+    private articleCache: ArticleCacheService,
+    private preloader: ArticlePreloader,
   ) {}
 
   getFeedContent = async (
@@ -43,6 +45,11 @@ export class FeedService {
       const data = await res.text();
       const { feedType, channel } = parseAndNormalizeFeed(data);
       const items = this.filterByDate(channel.item, feed?.oldestArticle);
+
+      // Preload articles into cache
+      const feeds = await this.getFeeds();
+      const feedCount = feeds?.length ?? 1;
+      await this.preloader.preloadForFeed(items, feedCount);
 
       // Enhance items with cached article metadata
       const enhancedItems = await this.enhanceItemsWithCache(items);
@@ -259,4 +266,5 @@ export const feedService = new FeedService(
   storageService,
   feedCacheService,
   articleCacheService,
+  articlePreloader,
 );

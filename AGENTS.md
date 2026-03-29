@@ -29,9 +29,10 @@ services/
   ArticleService.ts   -- HTML fetch, Readability extraction, lazy image handling
 ```
 
-- Dependencies are injected via constructor with a default value (e.g. `new FeedService(storageService)`)
-- The singleton export is used in the app (e.g. `feedService`)
+- Dependencies are injected via constructor WITHOUT default values (e.g. `constructor(private storage: StorageService)`)
+- The singleton export is used in the app (e.g. `feedService`) and passes all required dependencies explicitly
 - Tests instantiate the class directly with mock dependencies instead of using `jest.mock()`
+- IMPORTANT: Do NOT use default values in constructor parameters for classes with singleton exports - this can cause initialization order issues in JavaScript modules
 
 ## Code Style
 - TypeScript with strict mode enabled

@@ -29,7 +29,7 @@ export class FeedDiscoveryService {
   private fetcher: Fetcher;
   private xmlParser: XMLParser;
 
-  constructor(fetcher: Fetcher = fetch) {
+  constructor(fetcher: Fetcher) {
     this.fetcher = fetcher;
     this.xmlParser = new XMLParser();
   }

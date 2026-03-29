@@ -2,6 +2,7 @@ import { FeedService } from "./FeedService";
 import { StorageService } from "./StorageService";
 import { FeedCacheService } from "./FeedCacheService";
 import { ArticleCacheService } from "./ArticleCacheService";
+import { ArticlePreloader } from "./ArticlePreloader";
 
 const mockStorage = {
   getItem: jest.fn(),
@@ -20,6 +21,10 @@ const mockArticleCache = {
   getMetadata: jest.fn(),
 };
 
+const mockPreloader = {
+  preloadForFeed: jest.fn().mockResolvedValue(undefined),
+};
+
 const mockFetch = jest.fn();
 global.fetch = mockFetch;
 
@@ -27,6 +32,7 @@ const feedService = new FeedService(
   mockStorage as unknown as StorageService,
   mockFeedCache as unknown as FeedCacheService,
   mockArticleCache as unknown as ArticleCacheService,
+  mockPreloader as unknown as ArticlePreloader,
 );
 
 describe("FeedService", () => {
@@ -78,6 +84,7 @@ describe("FeedService", () => {
       expect(mockFetch).toHaveBeenCalledWith("https://example.com/rss", {
         method: "GET",
       });
+      expect(mockPreloader.preloadForFeed).toHaveBeenCalled();
       expect(result.date).toBeInstanceOf(Date);
       expect(result.rss).toBeDefined();
     });
@@ -130,6 +137,7 @@ describe("FeedService", () => {
         "https://example.com/rss",
       );
 
+      expect(mockPreloader.preloadForFeed).toHaveBeenCalled();
       expect(mockArticleCache.getMetadata).toHaveBeenCalledTimes(2);
       expect(mockArticleCache.getMetadata).toHaveBeenCalledWith(
         "https://example.com/article1",
