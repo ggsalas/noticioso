@@ -1,14 +1,36 @@
 import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
+import { articleCacheService } from "./ArticleCacheService";
 import type { Article } from "~/types";
 
 export class ArticleService {
   getArticle = async (url: string): Promise<Article> => {
+    // 1. Try cache first (returns null on miss, article on hit with LRU update)
+    const cached = await articleCacheService.get(url);
+    if (cached) return cached;
+
+    // 2. Fetch and parse only on cache miss
+    const article = await this.fetchArticleContent(url);
+
+    return article;
+  };
+
+  // Fetches article content and saves to cache. Use when cache status is already known.
+  fetchArticleContent = async (url: string): Promise<Article> => {
+    const article = await this.fetchAndParseArticle(url);
+    await articleCacheService.set(url, article);
+
+    return article;
+  };
+
+  private fetchAndParseArticle = async (url: string): Promise<Article> => {
     try {
       const res = await fetch(url);
 
       if (!res.ok) {
-        throw new Error(`Failed to fetch article from ${url}: ${res.status} ${res.statusText}`);
+        throw new Error(
+          `Failed to fetch article from ${url}: ${res.status} ${res.statusText}`,
+        );
       }
 
       const responseText = await res.text();
@@ -24,6 +46,7 @@ export class ArticleService {
       const data = {
         ...extractedContent,
         content: this.handleLazyImages(extractedContent?.content),
+        heroImage: this.getHeroImage(document, article),
       };
 
       return data as Article;
@@ -70,6 +93,75 @@ export class ArticleService {
     });
 
     return content;
+  }
+
+  private getHeroImage(doc: Document, parsed: any) {
+    // 1. metadata (fast and reliable)
+    const meta = extractMetaImage();
+    if (meta) return meta;
+
+    // 2. fallback with Readability
+    return extractFromReadability();
+
+    // Helper functions
+    function isValidImage(url: string): boolean {
+      if (!url) return false;
+
+      // avoid data URLs, svg, etc.
+      if (url.startsWith("data:")) return false;
+      if (url.endsWith(".svg")) return false;
+
+      return true;
+    }
+
+    function scoreImage(img: HTMLImageElement): number {
+      const width = img.naturalWidth || img.width || 0;
+      const height = img.naturalHeight || img.height || 0;
+
+      let score = 0;
+
+      // High resolution
+      score += width * height;
+
+      // penalize suspicious content
+      const src = img.src.toLowerCase();
+      if (src.includes("logo")) score *= 0.2;
+      if (src.includes("icon")) score *= 0.2;
+      if (width < 200 || height < 200) score *= 0.3;
+
+      return score;
+    }
+
+    function extractMetaImage(): string | null {
+      const og = doc
+        .querySelector('meta[property="og:image"]')
+        ?.getAttribute("content");
+      if (og && isValidImage(og)) return og;
+
+      const twitter = doc
+        .querySelector('meta[name="twitter:image"]')
+        ?.getAttribute("content");
+      if (twitter && isValidImage(twitter)) return twitter;
+
+      return null;
+    }
+
+    function extractFromReadability(): string | null {
+      const images = Array.from(
+        parsed.querySelectorAll("img"),
+      ) as HTMLImageElement[];
+
+      if (!images.length) return null;
+
+      const best = images
+        .map((img) => ({
+          img,
+          score: scoreImage(img),
+        }))
+        .sort((a, b) => b.score - a.score)[0];
+
+      return best?.img.src || null;
+    }
   }
 }
 

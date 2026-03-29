@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { AsyncStorageStatic } from "@react-native-async-storage/async-storage";
 
 export class StorageService {
-  constructor(private asyncStorage: AsyncStorageStatic = AsyncStorage) {}
+  constructor(private asyncStorage: AsyncStorageStatic) {}
 
   async getItem<T>(key: string): Promise<T | null> {
     let jsonValue: string | null;

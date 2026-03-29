@@ -10,7 +10,7 @@ export type FeedCache = {
 };
 
 export class FeedCacheService {
-  constructor(private storage: StorageService = storageService) {}
+  constructor(private storage: StorageService) {}
 
   get = async (url: string): Promise<FeedCache | null> => {
     return this.storage.getItem<FeedCache>(this.cacheKey(url));

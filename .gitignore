@@ -11,8 +11,6 @@ npm-debug.*
 web-build/
 
 local_md/
-.opencode/**
-opencode.json
 
 
 # macOS

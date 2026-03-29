@@ -3,7 +3,9 @@ import { router } from "expo-router";
 
 type ReadabilityArticle = ReturnType<Readability["parse"]>;
 
-export type Article = ReadabilityArticle;
+export type Article = ReadabilityArticle & {
+  heroImage?: string;
+};
 
 export type OldestArticle = 1 | 7;
 
@@ -32,6 +34,9 @@ export type FeedContentItem = {
   author?: string;
   description: string; // can have images
   "content:encoded"?: string; // can have images
+  // Enhanced fields from article cache
+  heroImage?: string;
+  excerpt?: string;
   /* guid
    *
    * media:description
@@ -63,7 +68,7 @@ export type AtomFeed = {
   feed: {
     title: string;
     subtitle?: string;
-    link?: string | { href: string } | Array<{ href: string }>;
+    link?: string | { href: string } | { href: string }[];
     updated?: string;
     entry: FeedContentItem[];
   };
@@ -119,3 +124,25 @@ export type HandleLinkData = {
 export type HandleRouterLinkData = {
   path: Parameters<typeof router.navigate>[0];
 };
+
+// Article cache types
+export type ArticleMetadata = {
+  heroImage?: string;
+  byline: string;
+  title: string;
+  excerpt: string;
+};
+
+export type ArticleCacheEntry = {
+  article: Article;
+  cachedAt: string; // ISO timestamp
+  lastAccessedAt: string; // ISO timestamp
+};
+
+export type ArticleCacheIndex = Record<
+  string,
+  {
+    cachedAt: string;
+    lastAccessedAt: string;
+  }
+>;

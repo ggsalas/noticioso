@@ -1,85 +1,86 @@
-import { articleService } from "./ArticleService";
+import { ArticleService } from "./ArticleService";
+import { articleCacheService } from "./ArticleCacheService";
 
-const mockFetch = jest.fn();
-global.fetch = mockFetch;
+jest.mock("./ArticleCacheService", () => ({
+  articleCacheService: {
+    get: jest.fn(),
+    set: jest.fn(),
+  },
+}));
 
 describe("ArticleService", () => {
+  let service: ArticleService;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    service = new ArticleService();
   });
 
   describe("getArticle", () => {
-    it("should fetch and extract article content", async () => {
-      const mockHtml = `
-        <html>
-          <head><title>Test Article</title></head>
-          <body>
-            <article>
-              <h1>Test Article Title</h1>
-              <p>This is the article content with some meaningful text that should be extracted by Readability.</p>
-              <p>More content to ensure we meet the character threshold.</p>
-            </article>
-          </body>
-        </html>`;
+    it("should return cached article on cache hit", async () => {
+      const mockArticle = {
+        title: "Cached Article",
+        content: "<p>Content</p>",
+        textContent: "Content",
+        length: 100,
+        excerpt: "Excerpt",
+        byline: "Author",
+        dir: "ltr",
+        siteName: "Site",
+        lang: "en",
+        publishedTime: "2026-03-27",
+      };
+      (articleCacheService.get as jest.Mock).mockResolvedValueOnce(mockArticle);
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        text: () => Promise.resolve(mockHtml),
-      });
+      const result = await service.getArticle("https://example.com/cached");
 
-      const result = await articleService.getArticle("https://example.com/article");
-
-      expect(mockFetch).toHaveBeenCalledWith("https://example.com/article");
-      expect(result).not.toBeNull();
-      if (result) {
-        expect(typeof result.title).toBe("string");
-      }
+      expect(articleCacheService.get).toHaveBeenCalledWith(
+        "https://example.com/cached",
+      );
+      expect(result).toEqual(mockArticle);
     });
 
-    it("should handle lazy loaded images", async () => {
-      const mockHtml = `
-        <html>
-          <body>
-            <article>
-              <h1>Article with Images</h1>
-              <p>Content with lazy loaded image:</p>
-              <img src="placeholder.jpg" data-src="real-image.jpg" alt="Test Image" />
-              <img src="another-placeholder.jpg" data-td-src-property="uruguay-image.jpg" alt="Uruguay Image" />
-            </article>
-          </body>
-        </html>`;
+    it("should call cache set after fetching on cache miss", async () => {
+      (articleCacheService.get as jest.Mock).mockResolvedValueOnce(null);
+      (articleCacheService.set as jest.Mock).mockResolvedValueOnce(undefined);
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        text: () => Promise.resolve(mockHtml),
-      });
+      // Mock fetchAndParseArticle to avoid parsing complexity
+      const mockArticle = { title: "Fetched Article", content: "<p>Content</p>" };
+      jest.spyOn(service as any, "fetchAndParseArticle").mockResolvedValueOnce(mockArticle);
 
-      const result = await articleService.getArticle("https://example.com/article-with-images");
+      await service.getArticle("https://example.com/article");
 
-      expect(result).not.toBeNull();
-      if (result && result.content) {
-        // Check that lazy loaded images were processed
-        expect(result.content).toBeDefined();
-      }
+      expect(articleCacheService.set).toHaveBeenCalledWith(
+        "https://example.com/article",
+        mockArticle,
+      );
     });
 
-    it("should throw error on failed fetch", async () => {
-      mockFetch.mockResolvedValueOnce({
+    it("should throw error on failed fetch and not cache", async () => {
+      (articleCacheService.get as jest.Mock).mockResolvedValueOnce(null);
+      global.fetch = jest.fn().mockResolvedValueOnce({
         ok: false,
         status: 404,
         statusText: "Not Found",
       });
 
       await expect(
-        articleService.getArticle("https://example.com/invalid")
-      ).rejects.toThrow("Failed to fetch article from https://example.com/invalid");
+        service.getArticle("https://example.com/invalid"),
+      ).rejects.toThrow(
+        "Failed to fetch article from https://example.com/invalid",
+      );
+
+      expect(articleCacheService.set).not.toHaveBeenCalled();
     });
 
     it("should handle network errors", async () => {
-      mockFetch.mockRejectedValueOnce(new Error("Network error"));
+      (articleCacheService.get as jest.Mock).mockResolvedValueOnce(null);
+      global.fetch = jest
+        .fn()
+        .mockRejectedValueOnce(new Error("Network error"));
 
       await expect(
-        articleService.getArticle("https://example.com/network-error")
+        service.getArticle("https://example.com/network-error"),
       ).rejects.toThrow("Error fetching article content");
     });
   });

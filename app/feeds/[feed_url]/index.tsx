@@ -2,7 +2,7 @@ import { HTMLPagesNav } from "@/components/HTMLPagesNav";
 import { useFeedContent } from "~/hooks/useFeedContent";
 import { usePreviousRoute } from "~/providers/PreviousRoute";
 import { useThemeContext } from "@/theme/ThemeProvider";
-import { HandleLinkData, HandleRouterLinkData } from "@/types";
+import { FeedContentItem, HandleLinkData, HandleRouterLinkData } from "@/types";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Text, View, StyleSheet } from "react-native";
 import { formatLastRefresh } from "~/formatters/timeFormatters";
@@ -24,18 +24,18 @@ export default function FeedPage() {
       feed_url,
     )}/articles/${encodeURIComponent(link)}`;
 
-  // TODO on big screens
-  // ${ description ? '<div class="description">' + description + "</div>" : "" }
+  // TODO: only important articles should have Hero
   const htmlItems =
     content?.length === 0
       ? '<div class="no-new-conent">No new content for this feed</div>'
       : content
           ?.map(
-            ({ title, link, author }: any) => `
+            ({ title, link, author, heroImage }: FeedContentItem) => `
             <div 
               class="item" 
               data-route-link="${getRouteLink(link)}" 
             >
+              ${heroImage ? `<div class="hero-image"><img src="${heroImage}"></img></div>` : ""}
               <h3 class="title">${title}</h3>
               ${author ? '<p class="author">' + author + "</p>" : ""}
             </div>
@@ -70,6 +70,20 @@ export default function FeedPage() {
         font-style: italic;
         line-height: ${fonts.lineHeightComfortable}px;
         margin: 0;
+      }
+
+      .hero-image {
+        width: 100%;
+        aspect-ratio: 16 / 6;
+        overflow: hidden;
+        margin-bottom: ${sizes.s0_50}px;
+      }
+
+      .hero-image img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: top;
       }
 
       .description {
