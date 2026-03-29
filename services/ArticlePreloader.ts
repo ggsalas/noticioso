@@ -33,24 +33,21 @@ export class ArticlePreloader {
   ): Promise<void> => {
     if (!items || items.length === 0) return;
 
-    // Calculate how many articles to preload for this feed
     const articlesPerFeed = Math.min(
       this.config.maxPerFeed,
       Math.ceil(this.config.totalArticles / feedCount),
     );
 
-    // Take first N items in feed order (sequential)
+    // Take first N items in feed order
     const selectedItems = items.slice(0, articlesPerFeed);
     if (selectedItems.length === 0) return;
 
-    // Extract URLs
-    const urls = selectedItems.map((item) => item.link).filter(Boolean);
-
     // Filter out already cached articles
+    const urls = selectedItems.map((item) => item.link).filter(Boolean);
     const urlsToFetch = await this.filterUncachedUrls(urls);
     if (urlsToFetch.length === 0) return;
 
-    // Download in batches using batchPromises
+    // Download in batches
     const tasks = urlsToFetch.map(
       (url) => () => this.articleService.fetchArticleContent(url),
     );
@@ -69,7 +66,6 @@ export class ArticlePreloader {
       }),
     );
 
-    // Return only URLs that are not in cache
     return results
       .filter(({ metadata }) => metadata === null)
       .map(({ url }) => url);
