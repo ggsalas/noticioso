@@ -24,12 +24,24 @@
       "favicon": "./assets/images/adaptive-icon.png"
     },
     "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 36,
+            "androidGradlePluginVersion": "8.9.1"
+          }
+        }
+      ],
       "expo-router",
       "expo-font",
       [
         "expo-share-intent",
         {
-          "androidIntentFilters": ["text/*"]
+          "androidIntentFilters": [
+            "text/*"
+          ]
         }
       ],
       [
@@ -45,7 +57,9 @@
             "imageWidth": 400
           }
         }
-      ]
+      ],
+      "expo-sharing",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true

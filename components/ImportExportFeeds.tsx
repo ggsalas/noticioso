@@ -1,5 +1,5 @@
 import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system";
+import { Paths, File } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View, Alert } from "react-native";
@@ -20,11 +20,11 @@ export function ImportExportFeeds() {
 
     try {
       const json = JSON.stringify(feeds ?? [], null, 2);
-      const fileUri = FileSystem.cacheDirectory + "feeds_export.json";
-      await FileSystem.writeAsStringAsync(fileUri, json, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
-      await Sharing.shareAsync(fileUri, {
+      // Use unique filename to avoid "already exists" error
+      const timestamp = Date.now();
+      const file = new File(Paths.cache, `feeds_export_${timestamp}.json`);
+      await file.write(json);
+      await Sharing.shareAsync(file.uri, {
         mimeType: "application/json",
         dialogTitle: "Export feeds",
         UTI: "public.json",
@@ -73,9 +73,8 @@ export function ImportExportFeeds() {
       }
 
       const uri = result.assets[0].uri;
-      const json = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
+      const sourceFile = new File(uri);
+      const json = await sourceFile.text();
 
       const ok = await importFeeds(json);
       if (ok) {
