@@ -10,7 +10,6 @@ import {
   Text,
   Alert,
   TextStyle,
-  InteractionManager,
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -34,16 +33,14 @@ export function Form({ item, loading, onSubmit, onDelete }: FormProps) {
   const urlRef = useRef<TextInput>(null);
 
   useEffect(() => {
-    const task = InteractionManager.runAfterInteractions(() => {
-      setTimeout(() => {
-        if (isNew && !feed.name) {
-          nameRef.current?.focus();
-        } else if (feed.name && !feed.url) {
-          urlRef.current?.focus();
-        }
-      }, 300);
-    });
-    return () => task.cancel();
+    const timeout = setTimeout(() => {
+      if (isNew && !feed.name) {
+        nameRef.current?.focus();
+      } else if (feed.name && !feed.url) {
+        urlRef.current?.focus();
+      }
+    }, 300);
+    return () => clearTimeout(timeout);
   }, [isNew, feed.name, feed.url]);
 
   return (

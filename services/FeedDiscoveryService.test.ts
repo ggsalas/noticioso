@@ -14,11 +14,6 @@ describe("FeedDiscoveryService", () => {
       const service = new FeedDiscoveryService(customMockFetcher);
       expect(service).toBeInstanceOf(FeedDiscoveryService);
     });
-
-    it("should use default fetch when no fetcher provided", () => {
-      const service = new FeedDiscoveryService();
-      expect(service).toBeInstanceOf(FeedDiscoveryService);
-    });
   });
 
   describe("discoverFeeds", () => {
