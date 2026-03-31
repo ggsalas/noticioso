@@ -38,7 +38,7 @@ export class ArticleService {
 
       const article = new Readability(document, {
         nbTopCandidates: 3,
-        charThreshold: 1000 * 1000,
+        charThreshold: 5000,
       });
 
       const extractedContent = article.parse();

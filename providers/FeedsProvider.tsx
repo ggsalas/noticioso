@@ -10,7 +10,7 @@ import { useAsyncFn } from "../hooks/useAsyncFn";
 import { feedService } from "@/services/FeedService";
 import { feedCacheService } from "@/services/FeedCacheService";
 import { batchPromises } from "@/lib/batchPromises";
-import { Feed } from "@/types";
+import { Feed, FeedData } from "@/types";
 
 const PREFETCH_BATCH_SIZE = 5;
 const FORCE_REFRESH_TIME = 60 * 60 * 1000; // 1 hour
@@ -69,7 +69,7 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
       ? { ...existingCounts }
       : {};
 
-    const results = await batchPromises(
+    const results = await batchPromises<{ data: FeedData; fromCache: boolean }>(
       feeds.map((feed) => () => feedService.getFeedContent(feed.url)),
       PREFETCH_BATCH_SIZE,
     );
@@ -77,7 +77,8 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
     let anySuccess = false;
     results.forEach((result, i) => {
       if (result.status === "fulfilled") {
-        counts[feeds[i].url] = result.value.rss?.channel?.item?.length ?? 0;
+        counts[feeds[i].url] =
+          result.value.data.rss?.channel?.item?.length ?? 0;
         anySuccess = true;
       }
     });
