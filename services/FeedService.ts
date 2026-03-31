@@ -6,6 +6,10 @@ import {
   ArticleCacheService,
 } from "./ArticleCacheService";
 import { articlePreloader, ArticlePreloader } from "./ArticlePreloader";
+import {
+  backgroundScheduler,
+  BackgroundScheduler,
+} from "./BackgroundScheduler";
 import type { Feed, FeedData, FeedContentItem } from "~/types";
 import { parseAndNormalizeFeed } from "@/lib/feedSchema";
 
@@ -17,21 +21,45 @@ export class FeedService {
     private cache: FeedCacheService,
     private articleCache: ArticleCacheService,
     private preloader: ArticlePreloader,
+    private scheduler: BackgroundScheduler,
   ) {}
 
   getFeedContent = async (
     url: string,
-    onCacheLoaded?: (data: FeedData) => void,
-  ): Promise<FeedData> => {
-    try {
-      // Serve from cache immediately if available
-      if (onCacheLoaded) {
-        const cached = await this.cache.get(url);
-        if (cached) {
-          onCacheLoaded(cached.data);
-        }
+    onBackgroundFetched?: (data: FeedData) => void,
+  ): Promise<{ data: FeedData; fromCache: boolean } | undefined> => {
+    const cached = await this.cache.get(url);
+
+    // Escenario 1 y 2: Hay cache → mostrar inmediatamente
+    if (cached) {
+      const cacheAge = Date.now() - new Date(cached.cachedAt).getTime();
+      const isCacheOld = cacheAge > 60 * 1000; //3600000; // más de 1 hora
+
+      // Escenario 2: Si el cache es viejo, hacer refresh en background
+      if (isCacheOld && onBackgroundFetched) {
+        this.scheduler.add(async () => {
+          const feedContent = await this.fetchAndCacheFeed(url);
+          if (feedContent) {
+            onBackgroundFetched(feedContent);
+          }
+        });
       }
 
+      return { data: cached.data, fromCache: true };
+    }
+
+    // Escenario 1 y 3: No hay cache → fetch bloqueante
+    const freshData = await this.fetchAndCacheFeed(url);
+    if (!freshData) {
+      return undefined;
+    }
+    return { data: freshData, fromCache: false };
+  };
+
+  private fetchAndCacheFeed = async (
+    url: string,
+  ): Promise<FeedData | undefined> => {
+    try {
       const feed = await this.getFeedByUrl(url);
 
       // Fetch and parse RSS content
@@ -49,7 +77,7 @@ export class FeedService {
       // Preload articles into cache
       const feeds = await this.getFeeds();
       const feedCount = feeds?.length ?? 1;
-      await this.preloader.preloadForFeed(items, feedCount);
+      this.scheduler.add(() => this.preloader.preloadForFeed(items, feedCount));
 
       // Enhance items with cached article metadata
       const enhancedItems = await this.enhanceItemsWithCache(items);
@@ -61,21 +89,45 @@ export class FeedService {
         rss: {
           channel: {
             ...channel,
+            title: channel.title,
+            description: channel.description,
+            language: channel.language,
+            link: channel.link,
+            lastBuildDate: channel.lastBuildDate,
             item: enhancedItems
-              ? enhancedItems.map(({ description, ...rest }) => ({
-                  ...rest,
-                  description: this.sanitizeContent(description),
-                }))
+              ? enhancedItems.map(
+                  ({
+                    title,
+                    link,
+                    pubDate,
+                    author,
+                    description,
+                    heroImage,
+                  }) => ({
+                    title,
+                    link,
+                    pubDate,
+                    author,
+                    heroImage,
+                    description: this.sanitizeContent(description),
+                  }),
+                )
               : [],
           },
         },
       };
 
-      await this.cache.set(url, feedContent);
+      // Try to cache, but don't fail if cache returns error
+      try {
+        await this.cache.set(url, feedContent);
+      } catch (cacheError) {
+        console.warn(`Failed to cache feed ${url}:`, cacheError);
+      }
 
       return feedContent;
     } catch (error) {
-      throw new Error(`Error fetching feed content: ${error}`);
+      console.error(`Error fetching feed content for ${url}:`, error);
+      return undefined;
     }
   };
 
@@ -267,4 +319,5 @@ export const feedService = new FeedService(
   feedCacheService,
   articleCacheService,
   articlePreloader,
+  backgroundScheduler,
 );

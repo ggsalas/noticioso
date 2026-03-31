@@ -18,26 +18,37 @@ export const useFeedContent = (url: string): UseFeedContent => {
   const fetchContent = useCallback(async () => {
     setError(null);
 
-    let hadCache = false;
-
-    const onCacheLoaded = (cached: FeedData) => {
-      hadCache = true;
-      setData(cached);
-      setLoading(false);
-      setIsRefreshing(true);
+    // Callback para cuando llega data del background fetch
+    const onBackgroundFetched = (fresh: FeedData) => {
+      setData(fresh);
+      setIsRefreshing(false);
     };
 
     try {
-      const fresh = await feedService.getFeedContent(url, onCacheLoaded);
-      setData(fresh);
-    } catch (err) {
-      // If we already showed cached data, don't wipe it — just stop refreshing
-      if (!hadCache) {
-        setError(err instanceof Error ? err.message : "An unknown error occurred");
+      setLoading(true);
+      const result = await feedService.getFeedContent(url, onBackgroundFetched);
+
+      // Escenario 1 y 2: Hay cache → mostrar inmediatamente
+      if (result?.fromCache) {
+        setData(result.data);
+        setLoading(false);
+        // Si hay cache viejo, va a venir refresh en background
+        // isRefreshing se mantiene true hasta que llegue el callback
       }
-    } finally {
+      // Escenario 3: No hay cache → fetch bloqueante ya regresó
+      else if (result) {
+        setData(result.data);
+        setLoading(false);
+      }
+      // Error al obtener datos
+      else {
+        setLoading(false);
+      }
+    } catch (err) {
       setLoading(false);
-      setIsRefreshing(false);
+      setError(
+        err instanceof Error ? err.message : "An unknown error occurred",
+      );
     }
   }, [url]);
 
