@@ -19,7 +19,9 @@ const mockFeedCache = {
 };
 
 const mockArticleCache = {
+  getHtml: jest.fn(),
   getMetadata: jest.fn(),
+  has: jest.fn(),
 };
 
 const mockPreloader = {
@@ -191,6 +193,7 @@ describe("FeedService", () => {
 
       // Verify cache was populated with enhanced metadata
       const cachedData = (mockFeedCache.set as jest.Mock).mock.calls[0][1];
+      console.log("cachedData item 0:", JSON.stringify(cachedData.rss.channel.item[0], null, 2));
       expect(cachedData.rss.channel.item[0].heroImage).toBe(
         "https://example.com/image1.jpg",
       );

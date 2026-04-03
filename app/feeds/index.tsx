@@ -8,6 +8,7 @@ import { usePreviousRoute } from "~/providers/PreviousRoute";
 import { useFeedsContext } from "@/providers/FeedsProvider";
 import { MaterialIcons } from "@expo/vector-icons";
 import { formatLastRefresh } from "~/formatters/timeFormatters";
+import { feedService } from "@/services/FeedService";
 
 export default function Feeds() {
   const { colors, fonts, sizes, style } = useStyles();
@@ -22,6 +23,7 @@ export default function Feeds() {
   } = useFeedsContext();
   const router = useRouter();
   const [resetNavigation, setResetNavigation] = useState(1);
+  const [cacheCleared, setCacheCleared] = useState(false);
 
   const previousRoute = usePreviousRoute<{ feed_url: string }>();
   const previousArticleUrl = previousRoute?.params?.feed_url;
@@ -109,6 +111,25 @@ export default function Feeds() {
           ),
           headerRight: () => (
             <>
+              <Pressable
+                style={style.rightButton}
+                android_ripple={{ color: colors.textGrey, borderless: true }}
+                onPress={async () => {
+                  try {
+                    await feedService.clearCaches();
+                    setCacheCleared(true);
+                    setTimeout(() => setCacheCleared(false), 2000);
+                  } catch (e) {
+                    console.error("Failed to clear caches:", e);
+                  }
+                }}
+              >
+                <MaterialIcons
+                  name={cacheCleared ? "check" : "delete-sweep"}
+                  size={sizes.s1}
+                  color={cacheCleared ? colors.tint : colors.text}
+                />
+              </Pressable>
               <Link href="/config/feedList" asChild>
                 <Pressable
                   style={style.rightButton}

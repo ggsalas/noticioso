@@ -7,6 +7,9 @@ type UseFeedContent = {
   loading: boolean;
   isRefreshing: boolean;
   error: string | null;
+  hasNewArticles: boolean;
+  dismissNewArticlesToast: () => void;
+  refreshAndShowToast: () => void;
 };
 
 export const useFeedContent = (url: string): UseFeedContent => {
@@ -14,13 +17,14 @@ export const useFeedContent = (url: string): UseFeedContent => {
   const [loading, setLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasNewArticles, setHasNewArticles] = useState(false);
 
   const fetchContent = useCallback(async () => {
     setError(null);
 
     // Callback para cuando llega data del background fetch
-    const onBackgroundFetched = (fresh: FeedData) => {
-      setData(fresh);
+    const onBackgroundFetched = () => {
+      setHasNewArticles(true);
       setIsRefreshing(false);
     };
 
@@ -52,9 +56,29 @@ export const useFeedContent = (url: string): UseFeedContent => {
     }
   }, [url]);
 
+  // Función para refrescar manualmente (cuando el usuario toca el toast)
+  const refreshAndShowToast = useCallback(async () => {
+    setHasNewArticles(false);
+    // Usar forceRefetch=true para forzar fetch fresco desde la red
+    const result = await feedService.getFeedContent(url, undefined, true);
+    // El problema es que getFeedContent retorna el cache inmediatamente y hace fetch en background
+    // Pero necesitamos esperar el resultado fresco
+    // Por ahora usamos el workaround: volver a llamar que fuerza actualización
+    setLoading(true);
+    const freshResult = await feedService.getFeedContent(url, undefined, true);
+    if (freshResult) {
+      setData(freshResult.data);
+    }
+    setLoading(false);
+  }, [url]);
+
+  const dismissNewArticlesToast = useCallback(() => {
+    setHasNewArticles(false);
+  }, []);
+
   useEffect(() => {
     fetchContent();
   }, [fetchContent]);
 
-  return { data, loading, isRefreshing, error };
+  return { data, loading, isRefreshing, error, hasNewArticles, dismissNewArticlesToast, refreshAndShowToast };
 };

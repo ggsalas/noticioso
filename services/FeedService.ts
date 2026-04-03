@@ -27,6 +27,7 @@ export class FeedService {
   getFeedContent = async (
     url: string,
     onBackgroundFetched?: (data: FeedData) => void,
+    forceRefetch?: boolean,
   ): Promise<{ data: FeedData; fromCache: boolean } | undefined> => {
     const cached = await this.cache.get(url);
 
@@ -36,11 +37,16 @@ export class FeedService {
       const isCacheOld = cacheAge > 60 * 1000; //3600000; // más de 1 hora
 
       // Escenario 2: Si el cache es viejo, hacer refresh en background
-      if (isCacheOld && onBackgroundFetched) {
+      if (forceRefetch || (isCacheOld && onBackgroundFetched)) {
         this.scheduler.add(async () => {
           const feedContent = await this.fetchAndCacheFeed(url);
-          if (feedContent) {
-            onBackgroundFetched(feedContent);
+          if (feedContent && onBackgroundFetched) {
+            // Comparar: solo notificar si hay más artículos que antes
+            const oldCount = cached.data.rss?.channel?.item?.length ?? 0;
+            const newCount = feedContent.rss?.channel?.item?.length ?? 0;
+            if (newCount > oldCount) {
+              onBackgroundFetched(feedContent);
+            }
           }
         });
       }
@@ -74,10 +80,11 @@ export class FeedService {
       const { feedType, channel } = parseAndNormalizeFeed(data);
       const items = this.filterByDate(channel.item, feed?.oldestArticle);
 
-      // Preload articles into cache
+      // Preload articles into cache (await so metadata is available for enhanceItemsWithCache)
       const feeds = await this.getFeeds();
       const feedCount = feeds?.length ?? 1;
-      this.scheduler.add(() => this.preloader.preloadForFeed(items, feedCount));
+
+      await this.preloader.preloadForFeed(items, feedCount);
 
       // Enhance items with cached article metadata
       const enhancedItems = await this.enhanceItemsWithCache(items);
@@ -94,25 +101,7 @@ export class FeedService {
             language: channel.language,
             link: channel.link,
             lastBuildDate: channel.lastBuildDate,
-            item: enhancedItems
-              ? enhancedItems.map(
-                  ({
-                    title,
-                    link,
-                    pubDate,
-                    author,
-                    description,
-                    heroImage,
-                  }) => ({
-                    title,
-                    link,
-                    pubDate,
-                    author,
-                    heroImage,
-                    description: this.sanitizeContent(description),
-                  }),
-                )
-              : [],
+            item: enhancedItems ?? [],
           },
         },
       };
@@ -311,6 +300,12 @@ export class FeedService {
         ...(metadata.excerpt && { excerpt: metadata.excerpt }),
       };
     });
+  };
+
+  // Clear all caches (for debugging/testing)
+  clearCaches = async (): Promise<void> => {
+    await this.storage.clearCaches();
+    await this.articleCache.clearFileCache();
   };
 }
 

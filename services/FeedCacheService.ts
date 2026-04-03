@@ -17,8 +17,13 @@ export class FeedCacheService {
   };
 
   set = async (url: string, data: FeedData): Promise<void> => {
-    const entry: FeedCache = { data, cachedAt: new Date().toISOString() };
-    await this.storage.setItem(this.cacheKey(url), entry);
+    try {
+      const entry: FeedCache = { data, cachedAt: new Date().toISOString() };
+      await this.storage.setItem(this.cacheKey(url), entry);
+    } catch (error) {
+      // Cache is optional - don't fail if storage is full
+      console.warn("Failed to cache feed:", url, error);
+    }
   };
 
   delete = async (url: string): Promise<void> => {

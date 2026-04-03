@@ -9,7 +9,8 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "icon": "./assets/images/noticioso-icon-500px.png"
+      "icon": "./assets/images/adaptive-icon.png",
+      "bundleIdentifier": "com.ggsalas.noticiosoandroid"
     },
     "android": {
       "adaptiveIcon": {

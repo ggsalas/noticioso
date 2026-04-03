@@ -4,17 +4,18 @@ import { ArticleCacheService } from "./ArticleCacheService";
 
 const mockArticleService = {
   fetchArticleContent: jest.fn(),
+  fetchAndCacheHtml: jest.fn(),
 };
 
 const mockArticleCache = {
-  getMetadata: jest.fn(),
+  has: jest.fn(),
 };
 
 const DEFAULT_CONFIG: PreloadConfig = {
   totalArticles: 200,
   maxPerFeed: 10,
   activeFeedCount: 1,
-  maxConcurrentDownloads: 3,
+  maxConcurrentDownloads: 1,
 };
 
 const preloader = new ArticlePreloader(
@@ -31,12 +32,12 @@ describe("ArticlePreloader", () => {
   describe("preloadForFeed", () => {
     it("should return early if items is undefined", async () => {
       await preloader.preloadForFeed(undefined, 1);
-      expect(mockArticleCache.getMetadata).not.toHaveBeenCalled();
+      expect(mockArticleCache.has).not.toHaveBeenCalled();
     });
 
     it("should return early if items is empty array", async () => {
       await preloader.preloadForFeed([], 1);
-      expect(mockArticleCache.getMetadata).not.toHaveBeenCalled();
+      expect(mockArticleCache.has).not.toHaveBeenCalled();
     });
 
     it("should return early if all items are already cached", async () => {
@@ -46,17 +47,12 @@ describe("ArticlePreloader", () => {
       ];
 
       // All items are cached
-      mockArticleCache.getMetadata.mockResolvedValue({
-        heroImage: "image.jpg",
-        byline: "Author",
-        title: "Title",
-        excerpt: "Excerpt",
-      });
+      mockArticleCache.has.mockResolvedValue(true);
 
       await preloader.preloadForFeed(items, 1);
 
       // Should have checked cache for all items
-      expect(mockArticleCache.getMetadata).toHaveBeenCalledTimes(2);
+      expect(mockArticleCache.has).toHaveBeenCalledTimes(2);
       // Should not have fetched any articles
       expect(mockArticleService.fetchArticleContent).not.toHaveBeenCalled();
     });
@@ -69,26 +65,21 @@ describe("ArticlePreloader", () => {
       ];
 
       // First is cached, second and third are not
-      mockArticleCache.getMetadata
-        .mockResolvedValueOnce({
-          heroImage: "image.jpg",
-          byline: "Author",
-          title: "Title",
-          excerpt: "Excerpt",
-        })
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(null);
+      mockArticleCache.has
+        .mockResolvedValueOnce(true)
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(false);
 
       await preloader.preloadForFeed(items, 1);
 
       // Should have checked cache for all items
-      expect(mockArticleCache.getMetadata).toHaveBeenCalledTimes(3);
-      // Should have fetched only uncached items
-      expect(mockArticleService.fetchArticleContent).toHaveBeenCalledTimes(2);
-      expect(mockArticleService.fetchArticleContent).toHaveBeenCalledWith(
+      expect(mockArticleCache.has).toHaveBeenCalledTimes(3);
+      // Should have fetched only uncached items (using fetchAndCacheHtml)
+      expect(mockArticleService.fetchAndCacheHtml).toHaveBeenCalledTimes(2);
+      expect(mockArticleService.fetchAndCacheHtml).toHaveBeenCalledWith(
         "https://example.com/2",
       );
-      expect(mockArticleService.fetchArticleContent).toHaveBeenCalledWith(
+      expect(mockArticleService.fetchAndCacheHtml).toHaveBeenCalledWith(
         "https://example.com/3",
       );
     });
@@ -102,13 +93,13 @@ describe("ArticlePreloader", () => {
       }));
 
       // No items cached
-      mockArticleCache.getMetadata.mockResolvedValue(null);
+      mockArticleCache.has.mockResolvedValue(false);
 
       await preloader.preloadForFeed(items, 1);
 
       // Should check only maxPerFeed (10) items
-      expect(mockArticleCache.getMetadata).toHaveBeenCalledTimes(10);
-      expect(mockArticleService.fetchArticleContent).toHaveBeenCalledTimes(10);
+      expect(mockArticleCache.has).toHaveBeenCalledTimes(10);
+      expect(mockArticleService.fetchAndCacheHtml).toHaveBeenCalledTimes(10);
     });
 
     it("should respect feedCount for distribution", async () => {
@@ -120,12 +111,12 @@ describe("ArticlePreloader", () => {
       }));
 
       // No items cached
-      mockArticleCache.getMetadata.mockResolvedValue(null);
+      mockArticleCache.has.mockResolvedValue(false);
 
       // With 2 feeds, should limit to 200/2 = 100 per feed, but capped at maxPerFeed (10)
       await preloader.preloadForFeed(items, 2);
 
-      expect(mockArticleCache.getMetadata).toHaveBeenCalledTimes(10);
+      expect(mockArticleCache.has).toHaveBeenCalledTimes(10);
     });
 
     it("should filter out empty links", async () => {
@@ -134,13 +125,13 @@ describe("ArticlePreloader", () => {
         { title: "Article 2", link: "", pubDate: "2026-03-28", description: "desc" },
       ] as any;
 
-      mockArticleCache.getMetadata.mockResolvedValue(null);
+      mockArticleCache.has.mockResolvedValue(false);
 
       await preloader.preloadForFeed(items, 1);
 
       // Should filter out items with empty links
-      expect(mockArticleCache.getMetadata).toHaveBeenCalledTimes(1);
-      expect(mockArticleCache.getMetadata).toHaveBeenCalledWith(
+      expect(mockArticleCache.has).toHaveBeenCalledTimes(1);
+      expect(mockArticleCache.has).toHaveBeenCalledWith(
         "https://example.com/1",
       );
     });

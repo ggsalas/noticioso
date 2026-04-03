@@ -1,64 +1,59 @@
 import { ArticleService } from "./ArticleService";
 import { articleCacheService } from "./ArticleCacheService";
 
-jest.mock("./ArticleCacheService", () => ({
-  articleCacheService: {
-    get: jest.fn(),
-    set: jest.fn(),
-  },
-}));
-
 describe("ArticleService", () => {
   let service: ArticleService;
+  let mockSetHtml: jest.SpyInstance;
+  let mockHas: jest.SpyInstance;
+  let mockFetch: jest.SpyInstance;
 
   beforeEach(() => {
     jest.clearAllMocks();
     service = new ArticleService();
+
+    mockSetHtml = jest.spyOn(articleCacheService, "setHtml");
+    mockHas = jest.spyOn(articleCacheService, "has");
+    mockFetch = jest.spyOn(global, "fetch");
+  });
+
+  afterEach(() => {
+    mockSetHtml.mockRestore();
+    mockHas.mockRestore();
+    mockFetch.mockRestore();
   });
 
   describe("getArticle", () => {
-    it("should return cached article on cache hit", async () => {
-      const mockArticle = {
-        title: "Cached Article",
-        content: "<p>Content</p>",
-        textContent: "Content",
-        length: 100,
-        excerpt: "Excerpt",
-        byline: "Author",
-        dir: "ltr",
-        siteName: "Site",
-        lang: "en",
-        publishedTime: "2026-03-27",
-      };
-      (articleCacheService.get as jest.Mock).mockResolvedValueOnce(mockArticle);
+    it("should fetch, save metadata, and parse article", async () => {
+      const mockHtml = `
+        <html>
+          <head>
+            <meta property="og:title" content="Test Article">
+          </head>
+          <body>
+            <article>Content</article>
+          </body>
+        </html>
+      `;
 
-      const result = await service.getArticle("https://example.com/cached");
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        text: () => Promise.resolve(mockHtml),
+      });
+      mockSetHtml.mockResolvedValueOnce(undefined);
 
-      expect(articleCacheService.get).toHaveBeenCalledWith(
-        "https://example.com/cached",
-      );
-      expect(result).toEqual(mockArticle);
-    });
+      const result = await service.getArticle("https://example.com/article");
 
-    it("should call cache set after fetching on cache miss", async () => {
-      (articleCacheService.get as jest.Mock).mockResolvedValueOnce(null);
-      (articleCacheService.set as jest.Mock).mockResolvedValueOnce(undefined);
-
-      // Mock fetchAndParseArticle to avoid parsing complexity
-      const mockArticle = { title: "Fetched Article", content: "<p>Content</p>" };
-      jest.spyOn(service as any, "fetchAndParseArticle").mockResolvedValueOnce(mockArticle);
-
-      await service.getArticle("https://example.com/article");
-
-      expect(articleCacheService.set).toHaveBeenCalledWith(
+      expect(mockFetch).toHaveBeenCalledWith("https://example.com/article");
+      expect(mockSetHtml).toHaveBeenCalledWith(
         "https://example.com/article",
-        mockArticle,
+        mockHtml,
       );
+      expect(result).toBeDefined();
+      expect(result.title).toBe("Test Article");
     });
 
-    it("should throw error on failed fetch and not cache", async () => {
-      (articleCacheService.get as jest.Mock).mockResolvedValueOnce(null);
-      global.fetch = jest.fn().mockResolvedValueOnce({
+    it("should throw error on failed fetch", async () => {
+      mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 404,
         statusText: "Not Found",
@@ -69,19 +64,37 @@ describe("ArticleService", () => {
       ).rejects.toThrow(
         "Failed to fetch article from https://example.com/invalid",
       );
+    });
+  });
 
-      expect(articleCacheService.set).not.toHaveBeenCalled();
+  describe("fetchArticleContent", () => {
+    it("should return early if already cached", async () => {
+      mockHas.mockResolvedValueOnce(true);
+
+      await service.fetchArticleContent("https://example.com/cached");
+
+      expect(mockHas).toHaveBeenCalledWith("https://example.com/cached");
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    it("should handle network errors", async () => {
-      (articleCacheService.get as jest.Mock).mockResolvedValueOnce(null);
-      global.fetch = jest
-        .fn()
-        .mockRejectedValueOnce(new Error("Network error"));
+    it("should fetch and save metadata on cache miss", async () => {
+      mockHas.mockResolvedValueOnce(false);
 
-      await expect(
-        service.getArticle("https://example.com/network-error"),
-      ).rejects.toThrow("Error fetching article content");
+      const mockHtml = "<html><head></head><body>Content</body></html>";
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        text: () => Promise.resolve(mockHtml),
+      });
+      mockSetHtml.mockResolvedValueOnce(undefined);
+
+      await service.fetchArticleContent("https://example.com/new");
+
+      expect(mockHas).toHaveBeenCalledWith("https://example.com/new");
+      expect(mockFetch).toHaveBeenCalledWith("https://example.com/new");
+      expect(mockSetHtml).toHaveBeenCalledWith(
+        "https://example.com/new",
+        mockHtml,
+      );
     });
   });
 });

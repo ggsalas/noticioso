@@ -133,10 +133,21 @@ export type ArticleMetadata = {
   excerpt: string;
 };
 
+// HTML cache entry - stores metadata in AsyncStorage, full HTML in file system
+export type ArticleHtmlCacheEntry = {
+  heroImage?: string;
+  byline?: string;
+  title?: string;
+  excerpt?: string;
+  fetchedAt: string; // ISO timestamp
+  lastAccessedAt: string; // ISO timestamp
+};
+
+// Legacy type for backwards compatibility during transition
 export type ArticleCacheEntry = {
   article: Article;
-  cachedAt: string; // ISO timestamp
-  lastAccessedAt: string; // ISO timestamp
+  cachedAt: string;
+  lastAccessedAt: string;
 };
 
 export type ArticleCacheIndex = Record<
