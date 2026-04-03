@@ -17,7 +17,7 @@ const DEFAULT_CONFIG: PreloadConfig = {
   totalArticles: 200,
   maxPerFeed: 10,
   activeFeedCount: 1,
-  maxConcurrentDownloads: 3,
+  maxConcurrentDownloads: 1,
 };
 
 export class ArticlePreloader {
@@ -47,10 +47,10 @@ export class ArticlePreloader {
     const urlsToFetch = await this.filterUncachedUrls(urls);
     if (urlsToFetch.length === 0) return;
 
-    // Download in batches
-    const tasks = urlsToFetch.map(
-      (url) => () => this.articleService.fetchArticleContent(url),
-    );
+    // Download in batches (using fetchAndCacheHtml since we already filtered uncached URLs)
+    const tasks = urlsToFetch.map((url) => () => {
+      return this.articleService.fetchAndCacheHtml(url);
+    });
 
     await batchPromises(tasks, this.config.maxConcurrentDownloads);
   };
@@ -58,17 +58,16 @@ export class ArticlePreloader {
   private filterUncachedUrls = async (urls: string[]): Promise<string[]> => {
     if (urls.length === 0) return [];
 
-    // Check cache in parallel for all URLs
+    // Check if URL exists in cache using has() method
     const results = await Promise.all(
       urls.map(async (url) => {
-        const metadata = await this.articleCache.getMetadata(url);
-        return { url, metadata };
+        const exists = await this.articleCache.has(url);
+        return { url, exists };
       }),
     );
 
-    return results
-      .filter(({ metadata }) => metadata === null)
-      .map(({ url }) => url);
+    // Return only URLs that are NOT in cache
+    return results.filter(({ exists }) => !exists).map(({ url }) => url);
   };
 }
 

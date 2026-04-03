@@ -50,6 +50,29 @@ export class StorageService {
       throw new Error(`Failed to clear storage: ${error}`);
     }
   }
+
+  // Clear only app-specific caches (keeps user data like feeds list)
+  async clearCaches(): Promise<void> {
+    try {
+      const allKeys = await this.asyncStorage.getAllKeys();
+      const cacheKeys = [
+        "@noticioso-feedCache-",
+        "@noticioso-articleHtmlCache-",
+        "@noticioso-articleHtmlCache-index",
+        "@noticioso-lastFullRefresh",
+      ];
+      
+      const keysToRemove = allKeys.filter(key => 
+        cacheKeys.some(cacheKey => key.includes(cacheKey))
+      );
+      
+      if (keysToRemove.length > 0) {
+        await this.asyncStorage.multiRemove(keysToRemove);
+      }
+    } catch (error) {
+      throw new Error(`Failed to clear caches: ${error}`);
+    }
+  }
 }
 
 export const storageService = new StorageService(AsyncStorage);

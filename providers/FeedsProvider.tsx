@@ -69,8 +69,12 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
       ? { ...existingCounts }
       : {};
 
-    const results = await batchPromises<{ data: FeedData; fromCache: boolean }>(
-      feeds.map((feed) => () => feedService.getFeedContent(feed.url)),
+    const results = await batchPromises<
+      { data: FeedData; fromCache: boolean } | undefined
+    >(
+      feeds.map(
+        (feed) => () => feedService.getFeedContent(feed.url, undefined, true),
+      ),
       PREFETCH_BATCH_SIZE,
     );
 
@@ -78,7 +82,7 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
     results.forEach((result, i) => {
       if (result.status === "fulfilled") {
         counts[feeds[i].url] =
-          result.value.data.rss?.channel?.item?.length ?? 0;
+          result.value?.data.rss?.channel?.item?.length ?? 0;
         anySuccess = true;
       }
     });
