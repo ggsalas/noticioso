@@ -70,7 +70,7 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
   // Cargar counts desde cache INMEDIATAMENTE (sin network)
   const loadCachedCounts = useCallback(async (feeds: Feed[]) => {
     const counts: Record<string, number> = {};
-    
+
     await Promise.allSettled(
       feeds.map(async (feed) => {
         const cached = await feedCacheService.get(feed.url);
@@ -79,32 +79,50 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
         }
       }),
     );
-    
+
     setFeedArticleCounts(counts);
     return counts;
   }, []);
 
   // Determinar si debe mostrar el toast
   const checkShouldShowToast = useCallback(
-    async (feeds: Feed[], cachedCounts: Record<string, number>) => {
+    async (
+      feeds: Feed[],
+      cachedCounts: Record<string, number>,
+      previousUrls: Set<string>,
+    ) => {
       if (!feeds || feeds.length === 0) return false;
 
       const lastRefresh = await feedCacheService.getLastFullRefresh();
-      
+
       // Condición 1: cache está stale (pasó el tiempo mínimo)
       const staleThreshold = Date.now() - CACHE_STALE_TIME_MS;
       const isCacheStale =
         lastRefresh === null ||
         new Date(lastRefresh).getTime() < staleThreshold;
 
-      // Condición 2: feeds nuevos o eliminados (comparar con estado anterior)
+      // Condición 2: solo feeds nuevas o eliminadas (NO reordenadas)
       const currentUrls = new Set(feeds.map((f) => f.url));
+      const newUrls = [...currentUrls].filter((url) => !previousUrls.has(url));
+      const removedUrls = [...previousUrls].filter(
+        (url) => !currentUrls.has(url),
+      );
       const feedsChanged =
-        previousFeedUrlsRef.current.size > 0 &&
-        (currentUrls.size !== previousFeedUrlsRef.current.size ||
-          ![...currentUrls].every((url) => previousFeedUrlsRef.current.has(url)));
+        previousUrls.size > 0 && (newUrls.length > 0 || removedUrls.length > 0);
 
-      return isCacheStale || feedsChanged;
+      // Condición 3: primera vez (previousUrls vacío) y hay feeds sin cache
+      const isFirstTime = previousUrls.size === 0;
+      const hasUncachedFeeds = feeds.some(
+        (feed) => cachedCounts[feed.url] === undefined,
+      );
+
+      console.log({
+        isCacheStale,
+        feedsChanged,
+        isFirstTime,
+        hasUncachedFeeds,
+      });
+      return isCacheStale || feedsChanged || (isFirstTime && hasUncachedFeeds);
     },
     [],
   );
@@ -114,19 +132,27 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
     if (!data || data.length === 0) return;
 
     const initData = async () => {
+      const previousUrls = previousFeedUrlsRef.current;
+      const currentUrls = new Set(data.map((f) => f.url));
+
       // Cargar counts desde cache
       const counts = await loadCachedCounts(data);
-      
+
       // Cargar timestamp de última actualización
       const lastRefresh = await feedCacheService.getLastFullRefresh();
       setLastFullRefreshAt(lastRefresh);
 
       // Verificar condiciones del toast
-      const shouldToast = await checkShouldShowToast(data, counts);
+      const shouldToast = await checkShouldShowToast(
+        data,
+        counts,
+        previousUrls,
+      );
+      console.log("[FeedsProvider] Should show update toast?", shouldToast);
       setShouldShowUpdateToast(shouldToast);
 
-      // Guardar URLs actuales para detección de cambios
-      previousFeedUrlsRef.current = new Set(data.map((f) => f.url));
+      // Guardar URLs actuales para la próxima comparación
+      previousFeedUrlsRef.current = currentUrls;
     };
 
     initData();
@@ -171,6 +197,7 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
   }, []);
 
   const refreshAndUpdateToast = useCallback(async () => {
+    console.log("[FeedsProvider] refreshAndUpdateToast called");
     setShouldShowUpdateToast(false);
     await refreshAllFeeds();
   }, [refreshAllFeeds]);
