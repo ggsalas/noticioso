@@ -230,14 +230,18 @@ export class FeedService {
 
   private isValidFeed(feed: unknown): feed is Feed {
     const f = feed as Feed;
+    const idValid = typeof f.id === "string" || typeof f.id === "number";
+    const oldestValid = typeof f.oldestArticle === "number" || typeof f.oldestArticle === "string";
+    const oldestValue = typeof f.oldestArticle === "string" ? parseInt(f.oldestArticle, 10) : f.oldestArticle;
     return !!(
+      idValid &&
       f.id &&
       typeof f.name === "string" &&
       f.name &&
       typeof f.url === "string" &&
       f.url &&
-      typeof f.oldestArticle === "number" &&
-      f.oldestArticle >= 1 &&
+      oldestValid &&
+      oldestValue >= 1 &&
       typeof f.lang === "string" &&
       f.lang
     );

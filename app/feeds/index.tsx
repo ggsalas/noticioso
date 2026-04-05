@@ -167,13 +167,17 @@ export default function Feeds() {
 
       {((!load && !feeds) || error) && (
         <>
-          <Text>The app has failed to get the feed list</Text>
-          <Text>content: {JSON.stringify(feeds, null, 4)}</Text>
-          <Text>error:{JSON.stringify(error)}</Text>
+          <Text style={style.content}>
+            The app has failed to get the feed list
+          </Text>
+          <Text style={style.contentCode}>
+            content: {JSON.stringify(feeds, null, 4)}
+          </Text>
+          <Text style={style.contentCode}>error:{JSON.stringify(error)}</Text>
         </>
       )}
 
-      {!load && feeds && (
+      {!load && feeds && !error && (
         <HTMLPagesNav
           key={resetNavigation}
           name="feed"
@@ -230,6 +234,17 @@ function useStyles() {
       height: 18,
       color: colors.text,
       overflow: "hidden",
+    },
+    content: {
+      fontSize: fonts.fontSizeP,
+      color: colors.text,
+      padding: sizes.s1,
+    },
+    contentCode: {
+      fontFamily: fonts.fontFamilyCodeRegular,
+      fontSize: fonts.fontSizeCode,
+      color: colors.text,
+      padding: sizes.s1,
     },
   });
 
