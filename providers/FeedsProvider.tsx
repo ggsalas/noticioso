@@ -5,6 +5,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useRef,
 } from "react";
 import { useAsyncFn } from "../hooks/useAsyncFn";
 import { feedService } from "@/services/FeedService";
@@ -64,9 +65,7 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
     null,
   );
   const [shouldShowUpdateToast, setShouldShowUpdateToast] = useState(false);
-  const [previousFeedUrls, setPreviousFeedUrls] = useState<Set<string>>(
-    new Set(),
-  );
+  const previousFeedUrlsRef = useRef<Set<string>>(new Set());
 
   // Cargar counts desde cache INMEDIATAMENTE (sin network)
   const loadCachedCounts = useCallback(async (feeds: Feed[]) => {
@@ -101,13 +100,13 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
       // Condición 2: feeds nuevos o eliminados (comparar con estado anterior)
       const currentUrls = new Set(feeds.map((f) => f.url));
       const feedsChanged =
-        previousFeedUrls.size > 0 &&
-        (currentUrls.size !== previousFeedUrls.size ||
-          ![...currentUrls].every((url) => previousFeedUrls.has(url)));
+        previousFeedUrlsRef.current.size > 0 &&
+        (currentUrls.size !== previousFeedUrlsRef.current.size ||
+          ![...currentUrls].every((url) => previousFeedUrlsRef.current.has(url)));
 
       return isCacheStale || feedsChanged;
     },
-    [previousFeedUrls],
+    [],
   );
 
   // Cargar datos desde cache al montar
@@ -127,7 +126,7 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
       setShouldShowUpdateToast(shouldToast);
 
       // Guardar URLs actuales para detección de cambios
-      setPreviousFeedUrls(new Set(data.map((f) => f.url)));
+      previousFeedUrlsRef.current = new Set(data.map((f) => f.url));
     };
 
     initData();
@@ -161,7 +160,7 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
 
       // Ocultar toast
       setShouldShowUpdateToast(false);
-      setPreviousFeedUrls(new Set(feeds.map((f) => f.url)));
+      previousFeedUrlsRef.current = new Set(feeds.map((f) => f.url));
     } finally {
       setUpdating(false);
     }

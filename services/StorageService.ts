@@ -62,11 +62,11 @@ export class StorageService {
         "@noticioso-lastFullRefresh",
         "@noticioso-article-ranking",
       ];
-      
-      const keysToRemove = allKeys.filter(key => 
-        cacheKeys.some(cacheKey => key.includes(cacheKey))
+
+      const keysToRemove = allKeys.filter((key) =>
+        cacheKeys.some((cacheKey) => key.includes(cacheKey)),
       );
-      
+
       if (keysToRemove.length > 0) {
         await this.asyncStorage.multiRemove(keysToRemove);
       }
