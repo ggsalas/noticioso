@@ -185,7 +185,9 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
         return true;
       }
     } catch (e) {
-      setActionError(`Cannot import feeds ${(e as Error).message}`);
+      const message = (e as Error).message;
+      setActionError(`Cannot import feeds ${message}`);
+      throw new Error(message);
     }
   };
 
