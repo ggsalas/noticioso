@@ -9,11 +9,9 @@ import {
 import { useAsyncFn } from "../hooks/useAsyncFn";
 import { feedService } from "@/services/FeedService";
 import { feedCacheService } from "@/services/FeedCacheService";
-import { batchPromises } from "@/lib/batchPromises";
-import { Feed, FeedData } from "@/types";
+import { Feed } from "@/types";
 
-const PREFETCH_BATCH_SIZE = 5;
-const FORCE_REFRESH_TIME = 60 * 60 * 1000; // 1 hour
+const CACHE_STALE_TIME_MS = 3 * 60 * 60 * 1000;
 
 type FeedsProviderProps = { children: ReactNode };
 
@@ -22,26 +20,32 @@ type FeedsContextType = {
   error?: string | null;
   feeds?: Feed[] | null;
   feedArticleCounts: Record<string, number>;
-  prefetching: boolean;
+  updating: boolean;
   lastFullRefreshAt: string | null;
+  shouldShowUpdateToast: boolean;
   getFeeds: () => void;
   importFeeds: (feeds: string) => Promise<boolean | undefined>;
   updateFeeds: (feeds: Feed[]) => Promise<boolean | undefined>;
   addOrEditFeed: (feed: Feed) => Promise<boolean | undefined>;
   deleteFeed: (feed: Feed) => Promise<boolean | undefined>;
   refreshAllFeeds: () => Promise<void>;
+  dismissToast: () => void;
+  refreshAndUpdateToast: () => Promise<void>;
 };
 
 const FeedsContext = createContext<FeedsContextType>({
   feedArticleCounts: {},
-  prefetching: false,
+  updating: false,
   lastFullRefreshAt: null,
+  shouldShowUpdateToast: false,
   getFeeds: () => null,
   importFeeds: async (_feeds: string) => true,
   updateFeeds: async (_feeds: Feed[]) => true,
   addOrEditFeed: async (_feed: Feed) => true,
   deleteFeed: async (_feed: Feed) => true,
   refreshAllFeeds: async () => {},
+  dismissToast: () => {},
+  refreshAndUpdateToast: async () => {},
 });
 
 export function FeedsProvider({ children }: FeedsProviderProps) {
@@ -55,72 +59,93 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
   const [feedArticleCounts, setFeedArticleCounts] = useState<
     Record<string, number>
   >({});
-  const [prefetching, setPrefetching] = useState(false);
+  const [updating, setUpdating] = useState(false);
   const [lastFullRefreshAt, setLastFullRefreshAt] = useState<string | null>(
     null,
   );
+  const [shouldShowUpdateToast, setShouldShowUpdateToast] = useState(false);
+  const [previousFeedUrls, setPreviousFeedUrls] = useState<Set<string>>(
+    new Set(),
+  );
 
-  // Fetch feed counts from network and optionally merge with existing counts
-  const fetchFeedCounts = async (
-    feeds: Feed[],
-    existingCounts?: Record<string, number>,
-  ): Promise<{ counts: Record<string, number>; anySuccess: boolean }> => {
-    const counts: Record<string, number> = existingCounts
-      ? { ...existingCounts }
-      : {};
-
-    const results = await batchPromises<
-      { data: FeedData; fromCache: boolean } | undefined
-    >(
-      feeds.map(
-        (feed) => () => feedService.getFeedContent(feed.url, undefined, true),
-      ),
-      PREFETCH_BATCH_SIZE,
+  // Cargar counts desde cache INMEDIATAMENTE (sin network)
+  const loadCachedCounts = useCallback(async (feeds: Feed[]) => {
+    const counts: Record<string, number> = {};
+    
+    await Promise.allSettled(
+      feeds.map(async (feed) => {
+        const cached = await feedCacheService.get(feed.url);
+        if (cached) {
+          counts[feed.url] = cached.data.rss?.channel?.item?.length ?? 0;
+        }
+      }),
     );
+    
+    setFeedArticleCounts(counts);
+    return counts;
+  }, []);
 
-    let anySuccess = false;
-    results.forEach((result, i) => {
-      if (result.status === "fulfilled") {
-        counts[feeds[i].url] =
-          result.value?.data.rss?.channel?.item?.length ?? 0;
-        anySuccess = true;
-      }
-    });
+  // Determinar si debe mostrar el toast
+  const checkShouldShowToast = useCallback(
+    async (feeds: Feed[], cachedCounts: Record<string, number>) => {
+      if (!feeds || feeds.length === 0) return false;
 
-    return { counts, anySuccess };
-  };
+      const lastRefresh = await feedCacheService.getLastFullRefresh();
+      
+      // Condición 1: cache está stale (pasó el tiempo mínimo)
+      const staleThreshold = Date.now() - CACHE_STALE_TIME_MS;
+      const isCacheStale =
+        lastRefresh === null ||
+        new Date(lastRefresh).getTime() < staleThreshold;
 
+      // Condición 2: feeds nuevos o eliminados (comparar con estado anterior)
+      const currentUrls = new Set(feeds.map((f) => f.url));
+      const feedsChanged =
+        previousFeedUrls.size > 0 &&
+        (currentUrls.size !== previousFeedUrls.size ||
+          ![...currentUrls].every((url) => previousFeedUrls.has(url)));
+
+      return isCacheStale || feedsChanged;
+    },
+    [previousFeedUrls],
+  );
+
+  // Cargar datos desde cache al montar
+  useEffect(() => {
+    if (!data || data.length === 0) return;
+
+    const initData = async () => {
+      // Cargar counts desde cache
+      const counts = await loadCachedCounts(data);
+      
+      // Cargar timestamp de última actualización
+      const lastRefresh = await feedCacheService.getLastFullRefresh();
+      setLastFullRefreshAt(lastRefresh);
+
+      // Verificar condiciones del toast
+      const shouldToast = await checkShouldShowToast(data, counts);
+      setShouldShowUpdateToast(shouldToast);
+
+      // Guardar URLs actuales para detección de cambios
+      setPreviousFeedUrls(new Set(data.map((f) => f.url)));
+    };
+
+    initData();
+  }, [data, loadCachedCounts, checkShouldShowToast]);
+
+  // Actualizar todas las feeds con el nuevo flujo
   const refreshAllFeeds = useCallback(async () => {
     const feeds = data;
     if (!feeds || feeds.length === 0) return;
 
-    setPrefetching(true);
+    setUpdating(true);
     try {
-      const { counts, anySuccess } = await fetchFeedCounts(
-        feeds,
-        feedArticleCounts,
-      );
-      setFeedArticleCounts(counts);
+      await feedService.fetchAndCacheAllFeedsRanked();
 
-      if (anySuccess) {
-        const now = new Date().toISOString();
-        await feedCacheService.setLastFullRefresh(now);
-        setLastFullRefreshAt(now);
-      }
-    } finally {
-      setPrefetching(false);
-    }
-  }, [data, feedArticleCounts]);
-
-  // On mount: load cached counts, then decide whether to refresh from network
-  useEffect(() => {
-    if (!data || data.length === 0) return;
-
-    const initCounts = async () => {
-      // Load counts from existing cache entries
+      // Actualizar counts desde cache después del fetch
       const counts: Record<string, number> = {};
       await Promise.allSettled(
-        data.map(async (feed) => {
+        feeds.map(async (feed) => {
           const cached = await feedCacheService.get(feed.url);
           if (cached) {
             counts[feed.url] = cached.data.rss?.channel?.item?.length ?? 0;
@@ -129,34 +154,27 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
       );
       setFeedArticleCounts(counts);
 
-      // Check if we need a network refresh
-      const lastRefresh = await feedCacheService.getLastFullRefresh();
-      setLastFullRefreshAt(lastRefresh);
+      // Actualizar timestamp
+      const now = new Date().toISOString();
+      await feedCacheService.setLastFullRefresh(now);
+      setLastFullRefreshAt(now);
 
-      const needsRefresh =
-        lastRefresh === null ||
-        new Date().getTime() - new Date(lastRefresh).getTime() >
-          FORCE_REFRESH_TIME;
-
-      if (needsRefresh) {
-        setPrefetching(true);
-        try {
-          const { counts: newCounts, anySuccess } = await fetchFeedCounts(data);
-          setFeedArticleCounts(newCounts);
-
-          if (anySuccess) {
-            const now = new Date().toISOString();
-            await feedCacheService.setLastFullRefresh(now);
-            setLastFullRefreshAt(now);
-          }
-        } finally {
-          setPrefetching(false);
-        }
-      }
-    };
-
-    initCounts();
+      // Ocultar toast
+      setShouldShowUpdateToast(false);
+      setPreviousFeedUrls(new Set(feeds.map((f) => f.url)));
+    } finally {
+      setUpdating(false);
+    }
   }, [data]);
+
+  const dismissToast = useCallback(() => {
+    setShouldShowUpdateToast(false);
+  }, []);
+
+  const refreshAndUpdateToast = useCallback(async () => {
+    setShouldShowUpdateToast(false);
+    await refreshAllFeeds();
+  }, [refreshAllFeeds]);
 
   const handleImportFeeds = async (feeds: string) => {
     try {
@@ -221,14 +239,17 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
         loading,
         error: error || actionError,
         feedArticleCounts,
-        prefetching,
+        updating,
         lastFullRefreshAt,
+        shouldShowUpdateToast,
         getFeeds: refetchFeeds,
         importFeeds: handleImportFeeds,
         updateFeeds: handleUpdateFeeds,
         addOrEditFeed: handleAddOrEditFeed,
         deleteFeed: handleDeleteFeed,
         refreshAllFeeds,
+        dismissToast,
+        refreshAndUpdateToast,
       }}
     >
       {children}

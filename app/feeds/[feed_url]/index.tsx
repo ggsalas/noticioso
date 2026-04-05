@@ -1,5 +1,4 @@
 import { HTMLPagesNav } from "@/components/HTMLPagesNav";
-import { NewArticlesToast } from "@/components/NewArticlesToast";
 import { useFeedContent } from "~/hooks/useFeedContent";
 import { usePreviousRoute } from "~/providers/PreviousRoute";
 import { useThemeContext } from "@/theme/ThemeProvider";
@@ -12,23 +11,13 @@ export default function FeedPage() {
   const { colors, fonts, sizes, style } = useStyles();
   const { feed_url } = useLocalSearchParams<{ feed_url: string }>();
   const router = useRouter();
-  const { 
-    data, 
-    loading, 
-    isRefreshing, 
-    error,
-    hasNewArticles,
-    dismissNewArticlesToast,
-    refreshAndShowToast,
-  } = useFeedContent(feed_url);
+  const { data, loading, error } = useFeedContent(feed_url);
   const content = data?.rss?.channel?.item;
   const title = data?.rss?.channel?.title;
   const date = data?.date?.toString();
 
   const previousRoute = usePreviousRoute<{ article_url: string }>();
   const previousArticleUrl = previousRoute?.params?.article_url;
-
-  console.log("feed_url data: ", data);
 
   const getRouteLink = (link: string) =>
     `/feeds/${encodeURIComponent(
@@ -134,19 +123,11 @@ export default function FeedPage() {
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
-                {isRefreshing
-                  ? "Updating... "
-                  : `Updated ${formatLastRefresh(date)}`}
+                {loading ? "Loading..." : `Updated ${formatLastRefresh(date)}`}
               </Text>
             </View>
           ),
         }}
-      />
-
-      <NewArticlesToast
-        visible={hasNewArticles}
-        onPress={refreshAndShowToast}
-        onDismiss={dismissNewArticlesToast}
       />
 
       {loading && (

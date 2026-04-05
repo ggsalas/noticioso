@@ -6,14 +6,11 @@ import {
   ArticleCacheService,
 } from "./ArticleCacheService";
 import { articlePreloader, ArticlePreloader } from "./ArticlePreloader";
-import {
-  backgroundScheduler,
-  BackgroundScheduler,
-} from "./BackgroundScheduler";
 import type { Feed, FeedData, FeedContentItem } from "~/types";
 import { parseAndNormalizeFeed } from "@/lib/feedSchema";
 
 const FEEDS_LIST_KEY = "@noticioso-feedList";
+const ARTICLE_RANKING_KEY = "@noticioso-article-ranking";
 
 export class FeedService {
   constructor(
@@ -21,54 +18,42 @@ export class FeedService {
     private cache: FeedCacheService,
     private articleCache: ArticleCacheService,
     private preloader: ArticlePreloader,
-    private scheduler: BackgroundScheduler,
   ) {}
 
+  // Obtiene contenido de cache INMEDIATAMENTE, sin importar antigüedad
+  // No hace fetch en background - eso es responsabilidad del usuario
   getFeedContent = async (
     url: string,
-    onBackgroundFetched?: (data: FeedData) => void,
-    forceRefetch?: boolean,
-  ): Promise<{ data: FeedData; fromCache: boolean } | undefined> => {
+  ): Promise<FeedData | undefined> => {
     const cached = await this.cache.get(url);
 
-    // Escenario 1 y 2: Hay cache → mostrar inmediatamente
     if (cached) {
-      const cacheAge = Date.now() - new Date(cached.cachedAt).getTime();
-      const isCacheOld = cacheAge > 60 * 1000; //3600000; // más de 1 hora
-
-      // Escenario 2: Si el cache es viejo, hacer refresh en background
-      if (forceRefetch || (isCacheOld && onBackgroundFetched)) {
-        this.scheduler.add(async () => {
-          const feedContent = await this.fetchAndCacheFeed(url);
-          if (feedContent && onBackgroundFetched) {
-            // Comparar: solo notificar si hay más artículos que antes
-            const oldCount = cached.data.rss?.channel?.item?.length ?? 0;
-            const newCount = feedContent.rss?.channel?.item?.length ?? 0;
-            if (newCount > oldCount) {
-              onBackgroundFetched(feedContent);
-            }
-          }
-        });
-      }
-
-      return { data: cached.data, fromCache: true };
+      // Enchanche with cached article metadata
+      const enhancedItems = await this.enhanceItemsWithCache(
+        cached.data.rss?.channel?.item,
+      );
+      const enhancedData: FeedData = {
+        ...cached.data,
+        rss: {
+          ...cached.data.rss,
+          channel: {
+            ...cached.data.rss.channel,
+            item: enhancedItems ?? [],
+          },
+        },
+      };
+      return enhancedData;
     }
 
-    // Escenario 1 y 3: No hay cache → fetch bloqueante
-    const freshData = await this.fetchAndCacheFeed(url);
-    if (!freshData) {
-      return undefined;
-    }
-    return { data: freshData, fromCache: false };
+    // No hay cache - devolver undefined para que la UI muestre estado vacío
+    return undefined;
   };
 
-  private fetchAndCacheFeed = async (
-    url: string,
-  ): Promise<FeedData | undefined> => {
+  // Fetch básico de una feed (sin preload) - usado internamente
+  private fetchFeedBasic = async (url: string): Promise<FeedData | undefined> => {
     try {
       const feed = await this.getFeedByUrl(url);
 
-      // Fetch and parse RSS content
       const res = await fetch(url, { method: "GET" });
       if (!res.ok) {
         throw new Error(
@@ -80,16 +65,6 @@ export class FeedService {
       const { feedType, channel } = parseAndNormalizeFeed(data);
       const items = this.filterByDate(channel.item, feed?.oldestArticle);
 
-      // Preload articles into cache (await so metadata is available for enhanceItemsWithCache)
-      const feeds = await this.getFeeds();
-      const feedCount = feeds?.length ?? 1;
-
-      await this.preloader.preloadForFeed(items, feedCount);
-
-      // Enhance items with cached article metadata
-      const enhancedItems = await this.enhanceItemsWithCache(items);
-
-      // Build the normalized FeedData
       const feedContent: FeedData = {
         date: new Date(),
         feedType,
@@ -101,12 +76,12 @@ export class FeedService {
             language: channel.language,
             link: channel.link,
             lastBuildDate: channel.lastBuildDate,
-            item: enhancedItems ?? [],
+            item: items ?? [],
           },
         },
       };
 
-      // Try to cache, but don't fail if cache returns error
+      // Cache the feed
       try {
         await this.cache.set(url, feedContent);
       } catch (cacheError) {
@@ -118,6 +93,72 @@ export class FeedService {
       console.error(`Error fetching feed content for ${url}:`, error);
       return undefined;
     }
+  };
+
+  // Obtiene TODAS las feeds actualizadas (metadata básica de cada artículo)
+  // No garantiza todos los campos - algunas feeds tienen autor, otras no
+  fetchAllFeeds = async (): Promise<FeedData[]> => {
+    const feeds = await this.getFeeds();
+    if (!feeds || feeds.length === 0) return [];
+
+    const results: FeedData[] = [];
+
+    for (const feed of feeds) {
+      const feedContent = await this.fetchFeedBasic(feed.url);
+      if (feedContent) {
+        results.push(feedContent);
+      }
+    }
+
+    return results;
+  };
+
+  // Asigna ranking a cada artículo basado en fecha (más reciente = mejor ranking)
+  // Guarda en storage con key ARTICLE_RANKING_KEY
+  private setArticleRanking = async (
+    allItems: FeedContentItem[],
+  ): Promise<void> => {
+    // Simple ranking: ordenar por pubDate descendente
+    const rankedItems = [...allItems].sort((a, b) => {
+      const dateA = a.pubDate ? new Date(a.pubDate).getTime() : 0;
+      const dateB = b.pubDate ? new Date(b.pubDate).getTime() : 0;
+      return dateB - dateA; // Más reciente primero
+    });
+
+    // Crear mapa de ranking: link -> ranking (0 = mejor)
+    const ranking: Record<string, number> = {};
+    rankedItems.forEach((item, index) => {
+      if (item.link) {
+        ranking[item.link] = index;
+      }
+    });
+
+    await this.storage.setItem(ARTICLE_RANKING_KEY, ranking);
+  };
+
+  // Orchestras: fetchAllFeeds -> setArticleRanking -> preloadFeedItems
+  fetchAndCacheAllFeedsRanked = async (): Promise<void> => {
+    const feeds = await this.getFeeds();
+    if (!feeds || feeds.length === 0) return;
+
+    const feedCount = feeds.length;
+    const allItems: FeedContentItem[] = [];
+
+    // 1. Fetch todas las feeds y收集artículos
+    for (const feed of feeds) {
+      const feedContent = await this.fetchFeedBasic(feed.url);
+      if (feedContent?.rss?.channel?.item) {
+        allItems.push(...feedContent.rss.channel.item);
+      }
+    }
+
+    // 2. Aplicar ranking
+    await this.setArticleRanking(allItems);
+
+    // 3. Preload de los top N artículos (5 * feedCount)
+    const topN = 5 * feedCount;
+    const topItems = allItems.slice(0, topN);
+    await this.preloader.preloadFeedItems(topItems);
   };
 
   getFeeds = async (_?: undefined): Promise<Feed[] | undefined> => {
@@ -254,7 +295,6 @@ export class FeedService {
     );
 
     return items.filter((item) => {
-      // Include items without pubDate
       if (!item.pubDate) return true;
 
       const itemDate = new Date(item.pubDate);
@@ -269,40 +309,33 @@ export class FeedService {
   ): Promise<FeedContentItem[] | undefined> => {
     if (!items) return undefined;
 
-    // Fetch metadata for all items in parallel
     const metadataResults = await Promise.all(
       items.map(async (item) => {
         try {
           const metadata = await this.articleCache.getMetadata(item.link);
           return { item, metadata };
         } catch {
-          // Gracefully handle individual cache lookup failures
           return { item, metadata: null };
         }
       }),
     );
 
-    // Map items with enhanced metadata
     return metadataResults.map(({ item, metadata }) => {
       if (!metadata) return item;
 
-      // Use byline from cache as author if available, non-empty (after trim), and is a string
       const hasValidByline =
         typeof metadata.byline === "string" &&
         metadata.byline.trim().length > 0;
 
       return {
         ...item,
-        // Replace author with byline from cache if valid
         ...(hasValidByline && { author: metadata.byline }),
-        // Add cached metadata as extended fields
         ...(metadata.heroImage && { heroImage: metadata.heroImage }),
         ...(metadata.excerpt && { excerpt: metadata.excerpt }),
       };
     });
   };
 
-  // Clear all caches (for debugging/testing)
   clearCaches = async (): Promise<void> => {
     await this.storage.clearCaches();
     await this.articleCache.clearFileCache();
@@ -314,5 +347,4 @@ export const feedService = new FeedService(
   feedCacheService,
   articleCacheService,
   articlePreloader,
-  backgroundScheduler,
 );
