@@ -41,7 +41,7 @@ export default function Feeds() {
 
   const htmlItems =
     visibleFeeds?.length === 0
-      ? '<div class="no-new-conent">No feeds found</div>'
+      ? '<div class="no-new-conent"><h3>No content to show.</h3> <p>Swipe down to get updates <br />or add a new feed.</p></div>'
       : visibleFeeds
           ?.map(
             ({ name, url }: any) => `
@@ -88,6 +88,8 @@ export default function Feeds() {
 
     ${htmlItems}
   `;
+
+  const load = loading || updating;
 
   return (
     <>
@@ -157,13 +159,13 @@ export default function Feeds() {
         onDismiss={dismissToast}
       />
 
-      {loading && (
+      {load && (
         <Text style={{ color: colors.text, padding: sizes.s1 }}>
           Loading...
         </Text>
       )}
 
-      {((!loading && !feeds) || error) && (
+      {((!load && !feeds) || error) && (
         <>
           <Text>The app has failed to get the feed list</Text>
           <Text>content: {JSON.stringify(feeds, null, 4)}</Text>
@@ -171,7 +173,7 @@ export default function Feeds() {
         </>
       )}
 
-      {!loading && feeds && (
+      {!load && feeds && (
         <HTMLPagesNav
           key={resetNavigation}
           name="feed"
