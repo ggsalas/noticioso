@@ -1,10 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
-import {
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Animated,
-} from "react-native";
+import { Text, TouchableOpacity, StyleSheet, Animated, View } from "react-native";
+import { MaterialIcons } from "@expo/vector-icons";
 import { useThemeContext } from "@/theme/ThemeProvider";
 
 type NewArticlesToastProps = {
@@ -18,16 +14,16 @@ export function NewArticlesToast({
   visible,
   onPress,
   onDismiss,
-  duration = 5000,
+  duration = 0,
 }: NewArticlesToastProps) {
   const { theme } = useThemeContext();
   const { colors, sizes } = theme;
-  const translateY = useRef(new Animated.Value(-100)).current;
+  const translateY = useRef(new Animated.Value(100)).current;
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const dismiss = useCallback(() => {
     Animated.timing(translateY, {
-      toValue: -100,
+      toValue: 100,
       duration: 300,
       useNativeDriver: true,
     }).start(() => onDismiss());
@@ -42,7 +38,9 @@ export function NewArticlesToast({
         friction: 10,
       }).start();
 
-      timeoutRef.current = setTimeout(dismiss, duration);
+      if (duration > 0) {
+        timeoutRef.current = setTimeout(dismiss, duration);
+      }
     }
 
     return () => {
@@ -59,6 +57,13 @@ export function NewArticlesToast({
     onPress();
   }, [onPress]);
 
+  const handleDismiss = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    dismiss();
+  }, [dismiss]);
+
   if (!visible) return null;
 
   return (
@@ -68,7 +73,7 @@ export function NewArticlesToast({
         {
           backgroundColor: colors.backgroundLight,
           transform: [{ translateY }],
-          top: sizes.s2,
+          bottom: sizes.s1,
           marginHorizontal: sizes.s1,
         },
       ]}
@@ -78,13 +83,40 @@ export function NewArticlesToast({
         onPress={handlePress}
         activeOpacity={0.8}
       >
-        <Text style={[styles.text, { color: colors.text }]}>
-          Nuevos artículos disponibles
-        </Text>
-        <Text style={[styles.subtext, { color: colors.textGrey }]}>
-          Toca para ver
-        </Text>
+        <View style={styles.textContainer}>
+          <Text style={[styles.text, { color: colors.text }]}>
+            Nuevos artículos disponibles
+          </Text>
+          <Text style={[styles.subtext, { color: colors.textGrey }]}>
+            Toca para ver
+          </Text>
+        </View>
       </TouchableOpacity>
+
+      <View style={styles.buttons}>
+        <TouchableOpacity
+          onPress={handlePress}
+          style={styles.button}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <MaterialIcons
+            name="visibility"
+            size={sizes.s1}
+            color={colors.text}
+          />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={handleDismiss}
+          style={styles.button}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <MaterialIcons
+            name="close"
+            size={sizes.s1}
+            color={colors.text}
+          />
+        </TouchableOpacity>
+      </View>
     </Animated.View>
   );
 }
@@ -101,10 +133,16 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
+    flexDirection: "row",
+    alignItems: "center",
   },
   content: {
+    flex: 1,
     paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingLeft: 16,
+  },
+  textContainer: {
+    flex: 1,
   },
   text: {
     fontSize: 16,
@@ -113,5 +151,14 @@ const styles = StyleSheet.create({
   subtext: {
     fontSize: 14,
     marginTop: 2,
+  },
+  buttons: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingRight: 12,
+    gap: 8,
+  },
+  button: {
+    padding: 4,
   },
 });

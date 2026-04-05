@@ -36,7 +36,7 @@ export default function Feeds() {
 
   const visibleFeeds = feeds?.filter(
     ({ url }) =>
-      feedArticleCounts[url] === undefined || feedArticleCounts[url] > 0,
+      feedArticleCounts[url] !== undefined && feedArticleCounts[url] > 0,
   );
 
   const htmlItems =
@@ -110,7 +110,7 @@ export default function Feeds() {
                 ellipsizeMode="tail"
               >
                 {updating
-                  ? "Updating..."
+                  ? ""
                   : `Last full update at ${formatLastRefresh(lastFullRefreshAt)}`}
               </Text>
             </View>

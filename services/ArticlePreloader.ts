@@ -28,11 +28,7 @@ export class ArticlePreloader {
     if (!items || items.length === 0) return;
 
     const urls = items.map((item) => item.link).filter(Boolean);
-    console.log('[Preload] Items to preload:', items.length);
-    console.log('[Preload] First 5 links:', urls.slice(0, 5));
-    
     const urlsToFetch = await this.filterUncachedUrls(urls);
-    console.log('[Preload] URLs to fetch (not cached):', urlsToFetch.length);
     if (urlsToFetch.length === 0) return;
 
     const tasks = urlsToFetch.map((url) => () => {
@@ -54,9 +50,7 @@ export class ArticlePreloader {
     );
 
     // Return only URLs that are NOT in cache
-    const uncached = results.filter(({ exists }) => !exists).map(({ url }) => url);
-    console.log('[Preload] filterUncached - Total:', urls.length, 'Cached:', urls.length - uncached.length, 'ToFetch:', uncached.length);
-    return uncached;
+    return results.filter(({ exists }) => !exists).map(({ url }) => url);
   };
 }
 
