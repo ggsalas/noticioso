@@ -60,6 +60,7 @@ export class StorageService {
         "@noticioso-articleHtmlCache-",
         "@noticioso-articleHtmlCache-index",
         "@noticioso-lastFullRefresh",
+        "@noticioso-article-ranking",
       ];
       
       const keysToRemove = allKeys.filter(key => 

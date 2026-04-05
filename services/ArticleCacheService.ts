@@ -131,7 +131,6 @@ export class ArticleCacheService {
 
     // 2. Extract metadata and save to AsyncStorage (as fields, not JSON string)
     const entry: ArticleHtmlCacheEntry = {
-      html: "", // We don't store HTML in AsyncStorage anymore
       heroImage: extractHeroImage(html),
       byline: extractAuthor(html),
       title: extractTitle(html),

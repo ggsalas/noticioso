@@ -7,17 +7,11 @@ import {
 import type { FeedContentItem } from "~/types";
 
 export interface PreloadConfig {
-  totalArticles: number;
-  maxPerFeed: number;
-  activeFeedCount: number;
   maxConcurrentDownloads: number;
 }
 
 const DEFAULT_CONFIG: PreloadConfig = {
-  totalArticles: 200,
-  maxPerFeed: 10,
-  activeFeedCount: 1,
-  maxConcurrentDownloads: 1,
+  maxConcurrentDownloads: 5,
 };
 
 export class ArticlePreloader {
@@ -27,27 +21,16 @@ export class ArticlePreloader {
     private config: PreloadConfig,
   ) {}
 
-  preloadForFeed = async (
+  // Preload una lista de artículos de feeds
+  preloadFeedItems = async (
     items: FeedContentItem[] | undefined,
-    feedCount: number,
   ): Promise<void> => {
     if (!items || items.length === 0) return;
 
-    const articlesPerFeed = Math.min(
-      this.config.maxPerFeed,
-      Math.ceil(this.config.totalArticles / feedCount),
-    );
-
-    // Take first N items in feed order
-    const selectedItems = items.slice(0, articlesPerFeed);
-    if (selectedItems.length === 0) return;
-
-    // Filter out already cached articles
-    const urls = selectedItems.map((item) => item.link).filter(Boolean);
+    const urls = items.map((item) => item.link).filter(Boolean);
     const urlsToFetch = await this.filterUncachedUrls(urls);
     if (urlsToFetch.length === 0) return;
 
-    // Download in batches (using fetchAndCacheHtml since we already filtered uncached URLs)
     const tasks = urlsToFetch.map((url) => () => {
       return this.articleService.fetchAndCacheHtml(url);
     });

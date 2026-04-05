@@ -4,6 +4,7 @@ import { useState } from "react";
 import { HandleRouterLinkData } from "@/types";
 import { useThemeContext } from "@/theme/ThemeProvider";
 import { HTMLPagesNav } from "@/components/HTMLPagesNav";
+import { NewArticlesToast } from "@/components/NewArticlesToast";
 import { usePreviousRoute } from "~/providers/PreviousRoute";
 import { useFeedsContext } from "@/providers/FeedsProvider";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -17,9 +18,12 @@ export default function Feeds() {
     loading,
     error,
     feedArticleCounts,
-    prefetching,
+    updating,
     lastFullRefreshAt,
+    shouldShowUpdateToast,
     refreshAllFeeds,
+    refreshAndUpdateToast,
+    dismissToast,
   } = useFeedsContext();
   const router = useRouter();
   const [resetNavigation, setResetNavigation] = useState(1);
@@ -103,7 +107,7 @@ export default function Feeds() {
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
-                {prefetching
+                {updating
                   ? "Updating..."
                   : `Last full update at ${formatLastRefresh(lastFullRefreshAt)}`}
               </Text>
@@ -145,6 +149,12 @@ export default function Feeds() {
             </>
           ),
         }}
+      />
+
+      <NewArticlesToast
+        visible={shouldShowUpdateToast}
+        onPress={refreshAndUpdateToast}
+        onDismiss={dismissToast}
       />
 
       {loading && (
