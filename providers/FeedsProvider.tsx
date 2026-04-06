@@ -16,12 +16,20 @@ const CACHE_STALE_TIME_MS = 3 * 60 * 60 * 1000;
 
 type FeedsProviderProps = { children: ReactNode };
 
+type ProgressStatus = {
+  name: 'FETCHING' | 'PRELOADING';
+  current: number;
+  total: number;
+};
+
+type FeedsUpdatingState = ProgressStatus | null;
+
 type FeedsContextType = {
-  loading?: boolean;
+  loading?: FeedsUpdatingState;
+  updating?: FeedsUpdatingState;
   error?: string | null;
   feeds?: Feed[] | null;
   feedArticleCounts: Record<string, number>;
-  updating: boolean;
   lastFullRefreshAt: string | null;
   shouldShowUpdateToast: boolean;
   getFeeds: () => void;
@@ -36,7 +44,6 @@ type FeedsContextType = {
 
 const FeedsContext = createContext<FeedsContextType>({
   feedArticleCounts: {},
-  updating: false,
   lastFullRefreshAt: null,
   shouldShowUpdateToast: false,
   getFeeds: () => null,
@@ -60,7 +67,7 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
   const [feedArticleCounts, setFeedArticleCounts] = useState<
     Record<string, number>
   >({});
-  const [updating, setUpdating] = useState(false);
+  const [updating, setUpdating] = useState<FeedsUpdatingState>(null);
   const [lastFullRefreshAt, setLastFullRefreshAt] = useState<string | null>(
     null,
   );
@@ -116,12 +123,6 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
         (feed) => cachedCounts[feed.url] === undefined,
       );
 
-      console.log({
-        isCacheStale,
-        feedsChanged,
-        isFirstTime,
-        hasUncachedFeeds,
-      });
       return isCacheStale || feedsChanged || (isFirstTime && hasUncachedFeeds);
     },
     [],
@@ -163,9 +164,11 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
     const feeds = data;
     if (!feeds || feeds.length === 0) return;
 
-    setUpdating(true);
+    setUpdating({ name: 'FETCHING', current: 0, total: feeds.length });
     try {
-      await feedService.fetchAndCacheAllFeedsRanked();
+      await feedService.fetchAndCacheAllFeedsRanked(
+        (name, current, total) => setUpdating({ name, current, total })
+      );
 
       // Actualizar counts desde cache después del fetch
       const counts: Record<string, number> = {};
@@ -188,7 +191,7 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
       setShouldShowUpdateToast(false);
       previousFeedUrlsRef.current = new Set(feeds.map((f) => f.url));
     } finally {
-      setUpdating(false);
+      setUpdating(null);
     }
   }, [data]);
 
@@ -264,7 +267,7 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
     <FeedsContext.Provider
       value={{
         feeds: data,
-        loading,
+        loading: loading ? { name: 'FETCHING', current: 0, total: 0 } : null,
         error: error || actionError,
         feedArticleCounts,
         updating,

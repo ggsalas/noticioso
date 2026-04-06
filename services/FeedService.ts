@@ -118,15 +118,18 @@ export class FeedService {
   };
 
   // Orchestras: fetchAllFeeds -> setRanking -> preloadFeedItems
-  fetchAndCacheAllFeedsRanked = async (): Promise<void> => {
+  fetchAndCacheAllFeedsRanked = async (
+    onProgress?: (name: 'FETCHING' | 'PRELOADING', current: number, total: number) => void,
+  ): Promise<void> => {
     const feeds = await this.getFeeds();
     if (!feeds || feeds.length === 0) return;
 
     const feedsData: FeedData[] = [];
 
     // 1. Fetch todas las feeds
-    for (const feed of feeds) {
-      const feedContent = await this.fetchFeedBasic(feed.url);
+    for (let i = 0; i < feeds.length; i++) {
+      onProgress?.('FETCHING', i + 1, feeds.length);
+      const feedContent = await this.fetchFeedBasic(feeds[i].url);
       if (feedContent) {
         feedsData.push(feedContent);
       }
@@ -139,7 +142,10 @@ export class FeedService {
     const itemsToPreload = this.ranking.filterByScore(feedsData, scoreMap, 9);
 
     // 4. Preload de los artículos seleccionados
-    await this.preloader.preloadFeedItems(itemsToPreload);
+    await this.preloader.preloadFeedItems(
+      itemsToPreload,
+      (current, total) => onProgress?.('PRELOADING', current, total),
+    );
   };
 
   getFeeds = async (_?: undefined): Promise<Feed[] | undefined> => {

@@ -25,6 +25,23 @@ export default function Feeds() {
     refreshAndUpdateToast,
     dismissToast,
   } = useFeedsContext();
+
+  const getStatusLabel = (status: {
+    name: string;
+    current: number;
+    total: number;
+  }) => {
+    switch (status.name) {
+      case "FETCHING":
+        return `Fetching feeds ${status.current} of ${status.total}`;
+      case "PRELOADING":
+        return `Preloading articles ${status.current} of ${status.total}`;
+      default:
+        return "Loading...";
+    }
+  };
+
+  const loadingStatus = loading || updating;
   const router = useRouter();
   const [resetNavigation, setResetNavigation] = useState(1);
   const [cacheCleared, setCacheCleared] = useState(false);
@@ -88,8 +105,6 @@ export default function Feeds() {
 
     ${htmlItems}
   `;
-
-  const load = loading || updating;
 
   return (
     <>
@@ -159,13 +174,13 @@ export default function Feeds() {
         onDismiss={dismissToast}
       />
 
-      {load && (
+      {loadingStatus && (
         <Text style={{ color: colors.text, padding: sizes.s1 }}>
-          Loading...
+          {getStatusLabel(loadingStatus)}
         </Text>
       )}
 
-      {((!load && !feeds) || error) && (
+      {((!loadingStatus && !feeds) || error) && (
         <>
           <Text style={style.content}>
             The app has failed to get the feed list
@@ -177,7 +192,7 @@ export default function Feeds() {
         </>
       )}
 
-      {!load && feeds && !error && (
+      {!loadingStatus && feeds && !error && (
         <HTMLPagesNav
           key={resetNavigation}
           name="feed"

@@ -1,5 +1,11 @@
 import { useEffect, useRef, useCallback } from "react";
-import { Text, TouchableOpacity, StyleSheet, Animated, View } from "react-native";
+import {
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Animated,
+  View,
+} from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useThemeContext } from "@/theme/ThemeProvider";
 
@@ -85,36 +91,18 @@ export function NewArticlesToast({
       >
         <View style={styles.textContainer}>
           <Text style={[styles.text, { color: colors.text }]}>
-            Nuevos artículos disponibles
-          </Text>
-          <Text style={[styles.subtext, { color: colors.textGrey }]}>
-            Toca para ver
+            Load new available articles
           </Text>
         </View>
       </TouchableOpacity>
 
       <View style={styles.buttons}>
         <TouchableOpacity
-          onPress={handlePress}
-          style={styles.button}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <MaterialIcons
-            name="visibility"
-            size={sizes.s1}
-            color={colors.text}
-          />
-        </TouchableOpacity>
-        <TouchableOpacity
           onPress={handleDismiss}
           style={styles.button}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <MaterialIcons
-            name="close"
-            size={sizes.s1}
-            color={colors.text}
-          />
+          <MaterialIcons name="close" size={sizes.s1} color={colors.text} />
         </TouchableOpacity>
       </View>
     </Animated.View>
