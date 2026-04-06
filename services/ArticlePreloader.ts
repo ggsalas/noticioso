@@ -24,6 +24,7 @@ export class ArticlePreloader {
   // Preload una lista de artículos de feeds
   preloadFeedItems = async (
     items: FeedContentItem[] | undefined,
+    onProgress?: (current: number, total: number) => void,
   ): Promise<void> => {
     if (!items || items.length === 0) return;
 
@@ -31,7 +32,8 @@ export class ArticlePreloader {
     const urlsToFetch = await this.filterUncachedUrls(urls);
     if (urlsToFetch.length === 0) return;
 
-    const tasks = urlsToFetch.map((url) => () => {
+    const tasks = urlsToFetch.map((url, index) => () => {
+      onProgress?.(index + 1, urlsToFetch.length);
       return this.articleService.fetchAndCacheHtml(url);
     });
 
