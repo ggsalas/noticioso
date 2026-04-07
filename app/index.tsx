@@ -24,11 +24,21 @@ export default function Index() {
               Hi, this is &rdquo;El Noticioso&rdquo;
             </Text>
 
-            <Link href="/searchFeedUrl" asChild>
-              <Pressable style={style.button}>
-                <Text style={style.buttonText}>Add your first feed</Text>
-              </Pressable>
-            </Link>
+            <View style={style.actions}>
+              <Link href="/searchFeedUrl" asChild>
+                <Pressable style={style.button}>
+                  <Text style={style.buttonText}>Add your first feed</Text>
+                </Pressable>
+              </Link>
+
+              <Text style={style.buttonText}>or</Text>
+
+              <Link href="/config/settings" asChild>
+                <Pressable style={style.button}>
+                  <Text style={style.buttonText}>Go to configurations</Text>
+                </Pressable>
+              </Link>
+            </View>
           </>
         )}
       </View>
@@ -58,14 +68,24 @@ function useStyles() {
       marginBottom: sizes.s1 * 4,
       marginTop: sizes.s1 * -1 * 10,
     },
+    actions: {
+      flex: 0,
+      flexDirection: "column",
+      gap: sizes.s1,
+      marginVertical: sizes.s1,
+    },
     button: {
-      backgroundColor: colors.text,
+      backgroundColor: colors.background,
       paddingVertical: sizes.s0_50,
       paddingHorizontal: sizes.s1,
-      fontSize: fonts.baseFontSize,
+      borderWidth: 1,
+      borderColor: colors.text,
     },
     buttonText: {
-      color: colors.backgroundDark_text,
+      color: colors.text,
+      fontSize: fonts.baseFontSize,
+      fontFamily: fonts.fontFamilyBold,
+      textAlign: "center",
     },
   });
 
