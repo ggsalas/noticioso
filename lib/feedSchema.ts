@@ -6,6 +6,7 @@ import type {
   RDFeed,
   FeedType,
   Channel,
+  FeedContentItem,
 } from "~/types";
 
 /**
@@ -72,9 +73,22 @@ export function parseAndNormalizeFeed(xmlText: string | null): FeedMetadata {
  * @throws Error if the feed format is not supported
  */
 export function normalizeToChannel(data: ParsedFeed): Channel {
+  // Helper to normalize author in items
+  const normalizeItems = (items: FeedContentItem[]) => {
+    if (!Array.isArray(items)) return [];
+    return items.map((item) => ({
+      ...item,
+      author: normalizeAuthor(item.author),
+    }));
+  };
+
   // Handle RSS
   if ("rss" in data) {
-    return (data as RSSFeed).rss.channel;
+    const channel = (data as RSSFeed).rss.channel;
+    return {
+      ...channel,
+      item: normalizeItems(channel.item),
+    };
   }
 
   // Handle Atom - normalize to channel format
@@ -86,13 +100,17 @@ export function normalizeToChannel(data: ParsedFeed): Channel {
       language: "",
       link: normalizeAtomLink(atomFeed.link),
       lastBuildDate: atomFeed.updated || "",
-      item: atomFeed.entry || [],
+      item: normalizeItems(atomFeed.entry || []),
     };
   }
 
   // Handle RDF
   if ("rdf:RDF" in data) {
-    return (data as RDFeed)["rdf:RDF"].channel;
+    const channel = (data as RDFeed)["rdf:RDF"].channel;
+    return {
+      ...channel,
+      item: normalizeItems(channel.item),
+    };
   }
 
   throw new Error("Unsupported feed format");
@@ -117,4 +135,34 @@ function normalizeAtomLink(
   }
 
   return link.href || "";
+}
+
+/**
+ * Normalizes author field which can be either a string or an object
+ * (e.g., {"#text": "by", "a": "Mark Bernstein"}) from mixed content XML
+ */
+export function normalizeAuthor(author?: string | object): string {
+  if (!author) {
+    return "";
+  }
+
+  if (typeof author === "string") {
+    return author;
+  }
+
+  if (typeof author === "object") {
+    const obj = author as Record<string, unknown>;
+
+    // Get nested element values (ignore #text like "by")
+    const parts: string[] = [];
+    for (const key of Object.keys(obj)) {
+      if (key !== "#text" && typeof obj[key] === "string") {
+        parts.push(obj[key] as string);
+      }
+    }
+
+    return parts.join(" ").trim();
+  }
+
+  return "";
 }

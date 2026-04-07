@@ -119,7 +119,11 @@ export class FeedService {
 
   // Orchestras: fetchAllFeeds -> setRanking -> preloadFeedItems
   fetchAndCacheAllFeedsRanked = async (
-    onProgress?: (name: 'FETCHING' | 'PRELOADING', current: number, total: number) => void,
+    onProgress?: (
+      name: "FETCHING" | "PRELOADING",
+      current: number,
+      total: number,
+    ) => void,
   ): Promise<void> => {
     const feeds = await this.getFeeds();
     if (!feeds || feeds.length === 0) return;
@@ -128,7 +132,7 @@ export class FeedService {
 
     // 1. Fetch todas las feeds
     for (let i = 0; i < feeds.length; i++) {
-      onProgress?.('FETCHING', i + 1, feeds.length);
+      onProgress?.("FETCHING", i + 1, feeds.length);
       const feedContent = await this.fetchFeedBasic(feeds[i].url);
       if (feedContent) {
         feedsData.push(feedContent);
@@ -142,9 +146,8 @@ export class FeedService {
     const itemsToPreload = this.ranking.filterByScore(feedsData, scoreMap, 9);
 
     // 4. Preload de los artículos seleccionados
-    await this.preloader.preloadFeedItems(
-      itemsToPreload,
-      (current, total) => onProgress?.('PRELOADING', current, total),
+    await this.preloader.preloadFeedItems(itemsToPreload, (current, total) =>
+      onProgress?.("PRELOADING", current, total),
     );
   };
 
@@ -237,8 +240,13 @@ export class FeedService {
   private isValidFeed(feed: unknown): feed is Feed {
     const f = feed as Feed;
     const idValid = typeof f.id === "string" || typeof f.id === "number";
-    const oldestValid = typeof f.oldestArticle === "number" || typeof f.oldestArticle === "string";
-    const oldestValue = typeof f.oldestArticle === "string" ? parseInt(f.oldestArticle, 10) : f.oldestArticle;
+    const oldestValid =
+      typeof f.oldestArticle === "number" ||
+      typeof f.oldestArticle === "string";
+    const oldestValue =
+      typeof f.oldestArticle === "string"
+        ? parseInt(f.oldestArticle, 10)
+        : f.oldestArticle;
     return !!(
       idValid &&
       f.id &&
