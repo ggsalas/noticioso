@@ -21,6 +21,8 @@ export type DiscoveredFeed = {
   type: string;
 };
 
+export type DiscoveryProgressCallback = (feed: DiscoveredFeed) => void;
+
 function isUrl(input: string): boolean {
   return /^https?:\/\//.test(input) || (/\./.test(input) && !/\s/.test(input));
 }
@@ -95,7 +97,10 @@ export class FeedDiscoveryService {
     return [...new Set(results)].slice(0, maxResults);
   }
 
-  discoverFeeds = async (input: string): Promise<DiscoveredFeed[]> => {
+  discoverFeeds = async (
+    input: string,
+    onFeedFound?: DiscoveryProgressCallback,
+  ): Promise<DiscoveredFeed[]> => {
     const trimmed = input.trim();
 
     try {
@@ -104,7 +109,7 @@ export class FeedDiscoveryService {
         const html = await this.safeFetch(normalizedUrl);
         if (!html) throw new Error(`Failed to fetch ${normalizedUrl}`);
 
-        return this.extractFeedLinks(html, normalizedUrl, true);
+        return this.extractFeedLinks(html, normalizedUrl, true, onFeedFound);
       } else {
         // Search mode: query DDG, get top 3 sites, extract feeds from each
         const siteUrls = await this.searchDuckDuckGo(trimmed);
@@ -120,20 +125,28 @@ export class FeedDiscoveryService {
             if (parsedFeed) {
               if (!seen.has(siteUrl)) {
                 seen.add(siteUrl);
-                allFeeds.push({
+                const feed: DiscoveredFeed = {
                   title: parsedFeed.channel.title,
                   url: siteUrl,
                   type: parsedFeed.feedType,
-                });
+                };
+                allFeeds.push(feed);
+                onFeedFound?.(feed);
               }
               continue;
             }
 
-            const feeds = await this.extractFeedLinks(site, siteUrl);
+            const feeds = await this.extractFeedLinks(
+              site,
+              siteUrl,
+              false,
+              onFeedFound,
+            );
             for (const feed of feeds) {
               if (!seen.has(feed.url)) {
                 seen.add(feed.url);
                 allFeeds.push(feed);
+                onFeedFound?.(feed);
               }
             }
           } catch {}
@@ -151,6 +164,7 @@ export class FeedDiscoveryService {
     html: string,
     baseUrl: string,
     guessPaths?: boolean,
+    onFeedFound?: DiscoveryProgressCallback,
   ): Promise<DiscoveredFeed[]> {
     const { document } = parseHTML(html);
     const feeds = new Set<string>();
@@ -214,15 +228,16 @@ export class FeedDiscoveryService {
 
     // 5 — validate feeds
     const feedUrls = Array.from(feeds).slice(0, 10); // limit to 10 candidates
-    const results = await Promise.all(
-      feedUrls.map(async (url) => {
-        const { valid, title } = await this.checkFeed(url);
-        return { url, valid, title };
-      }),
-    );
-    const validFeeds: DiscoveredFeed[] = results
-      .filter((r) => r.valid)
-      .map((r) => ({ title: r.title ?? r.url, url: r.url, type: "" }));
+    const validFeeds: DiscoveredFeed[] = [];
+
+    for (const url of feedUrls) {
+      const { valid, title } = await this.checkFeed(url);
+      if (valid) {
+        const feed: DiscoveredFeed = { title: title ?? url, url, type: "" };
+        validFeeds.push(feed);
+        onFeedFound?.(feed);
+      }
+    }
 
     return validFeeds;
   }
