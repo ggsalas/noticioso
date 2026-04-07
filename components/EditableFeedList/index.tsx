@@ -4,7 +4,8 @@ import DraggableFlatList from "react-native-draggable-flatlist";
 import { FlatList, GestureHandlerRootView } from "react-native-gesture-handler";
 import { Item } from "./Item";
 import { FloatingButton } from "./FloatingButton";
-import { View, Text } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
+import { useThemeContext } from "~/theme/ThemeProvider";
 
 type EditableFeedListProps = {
   feeds: Feed[];
@@ -21,12 +22,18 @@ export const EditableFeedList = ({
 }: EditableFeedListProps) => {
   const [localFeeds, setLocalFeeds] = useOptimistic(feeds);
   const listRef = useRef<FlatList<Feed>>(null);
+  const { styles } = useStyles();
 
   return (
     <>
       <GestureHandlerRootView style={{ flex: 1 }}>
         {feeds.length === 0 ? (
-          <Text>No feeds has been added</Text>
+          <>
+            <Text style={styles.text}>No Feeds Found.</Text>
+            <Text style={styles.text}>
+              Click plus (+) button to add your first feed
+            </Text>
+          </>
         ) : (
           <DraggableFlatList
             ref={listRef}
@@ -34,7 +41,9 @@ export const EditableFeedList = ({
             scrollToOverflowEnabled
             showsHorizontalScrollIndicator
             data={localFeeds}
-            renderItem={(props) => <Item {...{ ...props, onOpenModal: onEditItem }} />}
+            renderItem={(props) => (
+              <Item {...{ ...props, onOpenModal: onEditItem }} />
+            )}
             keyExtractor={(item) => item.id}
             onDragEnd={({ data }) => {
               setLocalFeeds(data);
@@ -50,6 +59,23 @@ export const EditableFeedList = ({
     </>
   );
 };
+
+function useStyles() {
+  const { theme } = useThemeContext();
+  const { colors, sizes, fonts } = theme;
+
+  const styles = StyleSheet.create({
+    text: {
+      color: colors.text,
+      paddingTop: sizes.s1,
+      paddingHorizontal: sizes.s1,
+      fontFamily: fonts.fontFamilyRegular,
+      fontSize: fonts.fontSizeP,
+    },
+  });
+
+  return { styles };
+}
 
 function useOptimistic(
   feeds: Feed[],

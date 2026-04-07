@@ -106,6 +106,8 @@ export default function Feeds() {
     ${htmlItems}
   `;
 
+  console.log("> ", feeds);
+
   return (
     <>
       <Stack.Screen
@@ -192,7 +194,28 @@ export default function Feeds() {
         </>
       )}
 
-      {!loadingStatus && feeds && !error && (
+      {!loadingStatus && feeds?.length === 0 && !error && (
+        <View style={style.contentWrapper}>
+          <Text style={style.content}>There are no feeds to show</Text>
+          <View style={style.actions}>
+            <Link href="/searchFeedUrl" asChild>
+              <Pressable style={style.button}>
+                <Text style={style.buttonText}>Add your first feed</Text>
+              </Pressable>
+            </Link>
+
+            <Text style={style.buttonText}>or</Text>
+
+            <Link href="/config/settings" asChild>
+              <Pressable style={style.button}>
+                <Text style={style.buttonText}>Go to configurations</Text>
+              </Pressable>
+            </Link>
+          </View>
+        </View>
+      )}
+
+      {!loadingStatus && feeds?.length > 0 && !error && (
         <HTMLPagesNav
           key={resetNavigation}
           name="feed"
@@ -250,16 +273,39 @@ function useStyles() {
       color: colors.text,
       overflow: "hidden",
     },
+    contentWrapper: {
+      padding: sizes.s1,
+      backgroundColor: colors.background,
+      flexGrow: 1,
+    },
     content: {
+      fontFamily: fonts.fontFamilyRegular,
       fontSize: fonts.fontSizeP,
       color: colors.text,
-      padding: sizes.s1,
     },
     contentCode: {
       fontFamily: fonts.fontFamilyCodeRegular,
       fontSize: fonts.fontSizeCode,
       color: colors.text,
-      padding: sizes.s1,
+    },
+    actions: {
+      flex: 1,
+      flexDirection: "column",
+      gap: sizes.s1,
+      marginVertical: sizes.s1,
+    },
+    button: {
+      backgroundColor: colors.background,
+      paddingVertical: sizes.s0_50,
+      paddingHorizontal: sizes.s1,
+      borderWidth: 1,
+      borderColor: colors.text,
+    },
+    buttonText: {
+      color: colors.text,
+      fontSize: fonts.baseFontSize,
+      fontFamily: fonts.fontFamilyBold,
+      textAlign: "center",
     },
   });
 
