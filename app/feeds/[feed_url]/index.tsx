@@ -32,7 +32,7 @@ export default function FeedPage() {
           ?.map(
             ({ title, link, author, heroImage }: FeedContentItem) => `
             <div 
-              class="item" 
+              class="item ${heroImage ? "with-hero" : ""}" 
               data-route-link="${getRouteLink(link)}" 
             >
               ${heroImage ? `<div class="hero-image"><img src="${heroImage}"></img></div>` : ""}
@@ -52,6 +52,10 @@ export default function FeedPage() {
         padding: ${sizes.s1}px 0;
         text-decoration: none;
         break-inside: avoid;
+      }
+
+      .item.with-hero {
+        padding: ${sizes.s0_50}px 0;
       }
 
       ${previousArticleUrl ? `.item[data-route-link*="${getRouteLink(previousArticleUrl)}"] { border-bottom-width: 5px; }` : ""}
@@ -74,16 +78,16 @@ export default function FeedPage() {
 
       .hero-image {
         width: 100%;
-        aspect-ratio: 16 / 6;
+        aspect-ratio: 16 / 5;
         overflow: hidden;
-        margin-bottom: ${sizes.s0_50}px;
+        margin: 0 0  ${sizes.s0_50} 0;
       }
 
       .hero-image img {
         width: 100%;
         height: 100%;
         object-fit: cover;
-        object-position: top;
+        object-position: 50% 20%;
       }
 
       .description {
