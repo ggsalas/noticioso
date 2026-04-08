@@ -1,8 +1,14 @@
-import { Theme } from "@react-navigation/native/src/types";
+import type { Theme } from "@react-navigation/native";
 import { colors } from "~/theme/colors";
 
 export const DarkTheme: Theme = {
   dark: true,
+  fonts: {
+    regular: { fontFamily: "System", fontWeight: "400" as const },
+    medium: { fontFamily: "System", fontWeight: "500" as const },
+    bold: { fontFamily: "System", fontWeight: "700" as const },
+    heavy: { fontFamily: "System", fontWeight: "900" as const },
+  },
   colors: {
     primary: colors.dark.tint,
     background: colors.dark.backgroundLight,
@@ -15,6 +21,12 @@ export const DarkTheme: Theme = {
 
 export const DefaultTheme: Theme = {
   dark: false,
+  fonts: {
+    regular: { fontFamily: "System", fontWeight: "400" as const },
+    medium: { fontFamily: "System", fontWeight: "500" as const },
+    bold: { fontFamily: "System", fontWeight: "700" as const },
+    heavy: { fontFamily: "System", fontWeight: "900" as const },
+  },
   colors: {
     primary: colors.light.tint,
     background: colors.light.backgroundLight,
