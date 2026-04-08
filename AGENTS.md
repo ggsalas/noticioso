@@ -33,11 +33,13 @@ services/
   FeedCacheService.ts        -- In-memory feed cache with LRU
   ArticleService.ts          -- HTML fetch, Readability extraction
   ArticleCacheService.ts     -- Article cache with metadata
+  ArticlePreloader.ts        -- Preload articles for offline reading
+  ArticleRankingService.ts  -- Rank articles by feed priority
   FeedDiscoveryService.ts    -- Find RSS feeds from websites
 ```
 
 - Dependencies are injected via constructor WITHOUT default values
-- The singleton export passes all required dependencies explicitly (e.g. `export const feedService = new FeedService(storageService, feedCacheService, articleCacheService, backgroundPreloadService)`)
+- The singleton export passes all required dependencies explicitly (e.g. `export const feedService = new FeedService(storageService, feedCacheService, articleCacheService, articlePreloader, articleRankingService)`)
 - Tests instantiate the class directly with mock dependencies instead of using `jest.mock()`
 - IMPORTANT: Do NOT use default values in constructor parameters for classes with singleton exports - this can cause initialization order issues in JavaScript modules
 
