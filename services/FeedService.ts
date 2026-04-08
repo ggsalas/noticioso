@@ -47,11 +47,11 @@ export class FeedService {
       return enhancedData;
     }
 
-    // No hay cache - devolver undefined para que la UI muestre estado vacío
+    // No cache - return undefined so UI shows empty state
     return undefined;
   };
 
-  // Fetch básico de una feed (sin preload) - usado internamente
+  // Basic fetch of a feed (without preload) - used internally
   private fetchFeedBasic = async (
     url: string,
   ): Promise<FeedData | undefined> => {
@@ -99,8 +99,7 @@ export class FeedService {
     }
   };
 
-  // Obtiene TODAS las feeds actualizadas (metadata básica de cada artículo)
-  // No garantiza todos los campos - algunas feeds tienen autor, otras no
+  // Get ALL updated feeds (basic metadata of each article)
   fetchAllFeeds = async (): Promise<FeedData[]> => {
     const feeds = await this.getFeeds();
     if (!feeds || feeds.length === 0) return [];
@@ -130,7 +129,7 @@ export class FeedService {
 
     const feedsData: FeedData[] = [];
 
-    // 1. Fetch todas las feeds
+    // 1. Fetch all feeds
     for (let i = 0; i < feeds.length; i++) {
       onProgress?.("FETCHING", i + 1, feeds.length);
       const feedContent = await this.fetchFeedBasic(feeds[i].url);
@@ -139,13 +138,13 @@ export class FeedService {
       }
     }
 
-    // 2. Aplicar ranking y obtener el scoreMap
+    // 2. Apply ranking and get scoreMap
     const { scoreMap } = await this.ranking.setRanking(feedsData);
 
-    // 3. Filtrar artículos con score >= 9 (solo los top 5 de cada feed con score 10)
+    // 3. Filter articles with score >= 9 (only top 5 of each feed with score 10)
     const itemsToPreload = this.ranking.filterByScore(feedsData, scoreMap, 9);
 
-    // 4. Preload de los artículos seleccionados
+    // 4. Preload selected articles
     await this.preloader.preloadFeedItems(itemsToPreload, (current, total) =>
       onProgress?.("PRELOADING", current, total),
     );

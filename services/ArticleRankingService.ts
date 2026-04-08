@@ -16,9 +16,9 @@ interface ItemWithScore {
 export class ArticleRankingService {
   constructor(private storage: StorageService) {}
 
-  // Asigna ranking: top 5 de cada feed = 10 puntos, resto = 1 punto
-  // Orden: puntaje > feed > fecha
-  // Retorna el ranking y el score para uso inmediato
+  // Assign ranking: top 5 of each feed = 10 points, rest = 1 point
+  // Order: score > feed > date
+  // Returns ranking and score for immediate use
   setRanking = async (
     feedsData: FeedData[],
   ): Promise<{ ranking: Record<string, number>; scoreMap: Record<string, number> }> => {
@@ -69,7 +69,7 @@ export class ArticleRankingService {
     return { ranking, scoreMap };
   };
 
-  // Filtrar artículos por threshold de score
+  // Filter articles by score threshold
   filterByScore = (
     feedsData: FeedData[],
     scoreMap: Record<string, number>,

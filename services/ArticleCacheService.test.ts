@@ -102,15 +102,16 @@ describe("ArticleCacheService", () => {
 
       await articleCacheService.setHtml("https://example.com/new", mockHtml);
 
-      // Should save metadata as fields (not JSON string), html is empty (saved to file system)
+      // Should save metadata (html stored in file system, not in storage entry)
       expect(mockStorage.setItem).toHaveBeenCalledWith(
         "@noticioso-articleHtmlCache-https://example.com/new",
         expect.objectContaining({
-          html: "", // HTML stored in file system now
           heroImage: "https://example.com/og-image.jpg",
           byline: "Test Author",
           title: "Article Title",
           excerpt: "Article description",
+          fetchedAt: expect.any(String),
+          lastAccessedAt: expect.any(String),
         }),
       );
     });

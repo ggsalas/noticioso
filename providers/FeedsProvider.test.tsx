@@ -116,7 +116,6 @@ describe("FeedsProvider", () => {
       const { result } = renderHook(useFeedsContext, { wrapper });
 
       expect(result.current.feedArticleCounts).toEqual({});
-      expect(result.current.prefetching).toBe(false);
       expect(result.current.lastFullRefreshAt).toBeNull();
     });
   });

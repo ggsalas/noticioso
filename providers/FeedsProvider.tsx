@@ -217,7 +217,6 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
     } catch (e) {
       const message = (e as Error).message;
       setActionError(`Cannot import feeds ${message}`);
-      throw new Error(message);
     }
   };
 

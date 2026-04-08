@@ -21,7 +21,7 @@ export class ArticlePreloader {
     private config: PreloadConfig,
   ) {}
 
-  // Preload una lista de artículos de feeds
+  // Preload a list of feed articles
   preloadFeedItems = async (
     items: FeedContentItem[] | undefined,
     onProgress?: (current: number, total: number) => void,

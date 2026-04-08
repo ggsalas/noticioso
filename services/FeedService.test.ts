@@ -3,7 +3,7 @@ import { StorageService } from "./StorageService";
 import { FeedCacheService } from "./FeedCacheService";
 import { ArticleCacheService } from "./ArticleCacheService";
 import { ArticlePreloader } from "./ArticlePreloader";
-import { BackgroundScheduler } from "./BackgroundScheduler";
+import { ArticleRankingService } from "./ArticleRankingService";
 
 const mockStorage = {
   getItem: jest.fn(),
@@ -45,7 +45,6 @@ const createTestScheduler = () => {
   let storedTask: (() => Promise<void>) | null = null;
   const scheduler = {
     add: async (task: () => Promise<void>) => {
-      // Store task and execute synchronously in tests
       storedTask = task;
       await task();
     },
@@ -55,10 +54,9 @@ const createTestScheduler = () => {
       }
     },
     stop: jest.fn(),
-    // Expose stored task for tests that need to verify it
     _getStoredTask: () => storedTask,
   };
-  return scheduler as unknown as BackgroundScheduler;
+  return scheduler as unknown as ArticleRankingService;
 };
 
 const feedService = new FeedService(
@@ -75,102 +73,35 @@ describe("FeedService", () => {
   });
 
   describe("getFeedContent", () => {
-    it("should fetch and process RSS feed with date filtering", async () => {
-      const mockFeed = {
-        id: "1",
-        name: "Test Feed",
-        url: "https://example.com/rss",
-        oldestArticle: 1 as const,
-        lang: "en" as const,
-      };
-
-      const mockRssXml = `<?xml version="1.0" encoding="UTF-8"?>
-        <rss version="2.0">
-          <channel>
-            <title>Test Feed</title>
-            <description>Test Description</description>
-            <item>
-              <title>Recent Article</title>
-              <link>https://example.com/recent</link>
-              <pubDate>${new Date().toISOString()}</pubDate>
-              <description>Recent article description</description>
-            </item>
-            <item>
-              <title>Old Article</title>
-              <link>https://example.com/old</link>
-              <pubDate>Mon, 01 Jan 2020 12:00:00 GMT</pubDate>
-              <description>Old article description</description>
-            </item>
-          </channel>
-        </rss>`;
-
-      mockStorage.getItem.mockResolvedValue([mockFeed]);
+    it("should return undefined when no cache exists", async () => {
       mockFeedCache.get.mockResolvedValueOnce(null); // No cache
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        text: () => Promise.resolve(mockRssXml),
-      });
-      mockArticleCache.getMetadata.mockResolvedValue(null);
 
       const result = await feedService.getFeedContent(
         "https://example.com/rss",
       );
 
-      // Without cache, returns the fetched data (blocking)
-      expect(result).toBeDefined();
-      expect(result?.fromCache).toBe(false);
-      expect(result?.data.date).toBeInstanceOf(Date);
-      expect(result?.data.rss).toBeDefined();
-
-      // Verify fetch was called
-      expect(mockFetch).toHaveBeenCalledWith("https://example.com/rss", {
-        method: "GET",
-      });
-      expect(mockPreloader.preloadForFeed).toHaveBeenCalled();
-
-      // Verify cache was populated with the feed data
-      expect(mockFeedCache.set).toHaveBeenCalled();
-      const cachedData = (mockFeedCache.set as jest.Mock).mock.calls[0][1];
-      expect(cachedData.date).toBeInstanceOf(Date);
-      expect(cachedData.rss).toBeDefined();
+      // Without cache, returns undefined (UI handles empty state)
+      expect(result).toBeUndefined();
+      // Should NOT trigger network fetch
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    it("should enhance items with cached article metadata", async () => {
-      const mockFeed = {
-        id: "1",
-        name: "Test Feed",
-        url: "https://example.com/rss",
-        oldestArticle: 1 as const,
-        lang: "en" as const,
+    it("should return cached data with enhanced items", async () => {
+      const cachedFeedData = {
+        date: new Date(),
+        feedType: "rss" as const,
+        rss: {
+          channel: {
+            title: "Cached Feed",
+            item: [
+              { title: "Article 1", link: "https://example.com/article1", pubDate: "2026-03-28", description: "desc" },
+              { title: "Article 2", link: "https://example.com/article2", pubDate: "2026-03-28", description: "desc" },
+            ],
+          },
+        },
       };
 
-      const mockRssXml = `<?xml version="1.0" encoding="UTF-8"?>
-        <rss version="2.0">
-          <channel>
-            <title>Test Feed</title>
-            <item>
-              <title>Article 1</title>
-              <link>https://example.com/article1</link>
-              <pubDate>${new Date().toISOString()}</pubDate>
-              <description>Description 1</description>
-            </item>
-            <item>
-              <title>Article 2</title>
-              <link>https://example.com/article2</link>
-              <pubDate>${new Date().toISOString()}</pubDate>
-              <description>Description 2</description>
-            </item>
-          </channel>
-        </rss>`;
-
-      mockStorage.getItem.mockResolvedValue([mockFeed]);
-      mockFeedCache.get.mockResolvedValueOnce(null); // No cache
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        text: () => Promise.resolve(mockRssXml),
-      });
-
-      // Mock metadata for first article only
+      mockFeedCache.get.mockResolvedValueOnce({ data: cachedFeedData });
       mockArticleCache.getMetadata
         .mockResolvedValueOnce({
           heroImage: "https://example.com/image1.jpg",
@@ -180,75 +111,17 @@ describe("FeedService", () => {
         })
         .mockResolvedValueOnce(null);
 
-      await feedService.getFeedContent("https://example.com/rss");
+      const result = await feedService.getFeedContent("https://example.com/rss");
 
-      expect(mockPreloader.preloadForFeed).toHaveBeenCalled();
-      expect(mockArticleCache.getMetadata).toHaveBeenCalledTimes(2);
-      expect(mockArticleCache.getMetadata).toHaveBeenCalledWith(
-        "https://example.com/article1",
-      );
-      expect(mockArticleCache.getMetadata).toHaveBeenCalledWith(
-        "https://example.com/article2",
-      );
-
-      // Verify cache was populated with enhanced metadata
-      const cachedData = (mockFeedCache.set as jest.Mock).mock.calls[0][1];
-      console.log("cachedData item 0:", JSON.stringify(cachedData.rss.channel.item[0], null, 2));
-      expect(cachedData.rss.channel.item[0].heroImage).toBe(
+      expect(result).toBeDefined();
+      expect(result?.rss.channel.item[0].heroImage).toBe(
         "https://example.com/image1.jpg",
       );
-      expect(cachedData.rss.channel.item[0].author).toBe("John Doe");
-      expect(cachedData.rss.channel.item[0].excerpt).toBe("Excerpt 1");
+      expect(result?.rss.channel.item[0].author).toBe("John Doe");
+      expect(result?.rss.channel.item[0].excerpt).toBe("Excerpt 1");
 
       // Second item should not have enhanced metadata
-      expect(cachedData.rss.channel.item[1].heroImage).toBeUndefined();
-      expect(cachedData.rss.channel.item[1].author).toBeUndefined();
-    });
-
-    it("should return cached data immediately without blocking", async () => {
-      const cachedFeedData = {
-        date: new Date(),
-        feedType: "rss" as const,
-        rss: {
-          channel: {
-            title: "Cached Feed",
-            item: [],
-          },
-        },
-      };
-
-      mockFeedCache.get.mockResolvedValueOnce({
-        data: cachedFeedData,
-        cachedAt: new Date().toISOString(), // Cache reciente (< 1 hora)
-      });
-
-      const result = await feedService.getFeedContent(
-        "https://example.com/rss",
-      );
-
-      // Should return cached data with fromCache flag
-      expect(result?.fromCache).toBe(true);
-      expect(result?.data).toEqual(cachedFeedData);
-    });
-
-    it("should throw error on failed background fetch", async () => {
-      mockStorage.getItem.mockResolvedValue([]);
-      mockFeedCache.get.mockResolvedValueOnce(null); // No cache
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        statusText: "Not Found",
-      });
-      mockArticleCache.getMetadata.mockResolvedValue(null);
-
-      // Since fetch happens in background, the error is caught internally
-      // and the function returns undefined (no cache)
-      const result = await feedService.getFeedContent(
-        "https://example.com/invalid",
-      );
-
-      expect(result).toBeUndefined();
-      // The error is logged but not thrown to avoid breaking the UI
+      expect(result?.rss.channel.item[1].heroImage).toBeUndefined();
     });
   });
 
