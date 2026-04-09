@@ -17,7 +17,7 @@ const CACHE_STALE_TIME_MS = 3 * 60 * 60 * 1000;
 type FeedsProviderProps = { children: ReactNode };
 
 type ProgressStatus = {
-  name: 'FETCHING' | 'PRELOADING';
+  name: "FETCHING" | "PRELOADING";
   current: number;
   total: number;
 };
@@ -104,13 +104,13 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
 
       const lastRefresh = await feedCacheService.getLastFullRefresh();
 
-      // Condición 1: cache está stale (pasó el tiempo mínimo)
+      // Condition 1: cache is stale (passed minimum time)
       const staleThreshold = Date.now() - CACHE_STALE_TIME_MS;
       const isCacheStale =
         lastRefresh === null ||
         new Date(lastRefresh).getTime() < staleThreshold;
 
-      // Condición 2: solo feeds nuevas o eliminadas (NO reordenadas)
+      // Condition 2: only new or removed feeds (NOT reordered)
       const currentUrls = new Set(feeds.map((f) => f.url));
       const newUrls = [...currentUrls].filter((url) => !previousUrls.has(url));
       const removedUrls = [...previousUrls].filter(
@@ -119,7 +119,7 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
       const feedsChanged =
         previousUrls.size > 0 && (newUrls.length > 0 || removedUrls.length > 0);
 
-      // Condición 3: primera vez (previousUrls vacío) y hay feeds sin cache
+      // Condition 3: first time (previousUrls empty) and there are uncached feeds
       const isFirstTime = previousUrls.size === 0;
       const hasUncachedFeeds = feeds.some(
         (feed) => cachedCounts[feed.url] === undefined,
@@ -141,7 +141,7 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
       // Cargar counts desde cache
       const counts = await loadCachedCounts(data);
 
-      // Cargar timestamp de última actualización
+      // Load last refresh timestamp
       const lastRefresh = await feedCacheService.getLastFullRefresh();
       setLastFullRefreshAt(lastRefresh);
 
@@ -151,10 +151,9 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
         counts,
         previousUrls,
       );
-      console.log("[FeedsProvider] Should show update toast?", shouldToast);
       setShouldShowUpdateToast(shouldToast);
 
-      // Guardar URLs actuales para la próxima comparación
+      // Save current URLs for next comparison
       previousFeedUrlsRef.current = currentUrls;
     };
 
@@ -166,13 +165,13 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
     const feeds = data;
     if (!feeds || feeds.length === 0) return;
 
-    setUpdating({ name: 'FETCHING', current: 0, total: feeds.length });
+    setUpdating({ name: "FETCHING", current: 0, total: feeds.length });
     try {
-      await feedService.fetchAndCacheAllFeedsRanked(
-        (name, current, total) => setUpdating({ name, current, total })
+      await feedService.fetchAndCacheAllFeedsRanked((name, current, total) =>
+        setUpdating({ name, current, total }),
       );
 
-      // Actualizar counts desde cache después del fetch
+      // Update counts from cache after fetch
       const counts: Record<string, number> = {};
       await Promise.allSettled(
         feeds.map(async (feed) => {
@@ -206,7 +205,6 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
   }, []);
 
   const refreshAndUpdateToast = useCallback(async () => {
-    console.log("[FeedsProvider] refreshAndUpdateToast called");
     setShouldShowUpdateToast(false);
     await refreshAllFeeds();
   }, [refreshAllFeeds]);
@@ -272,7 +270,7 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
     <FeedsContext.Provider
       value={{
         feeds: data,
-        loading: loading ? { name: 'FETCHING', current: 0, total: 0 } : null,
+        loading: loading ? { name: "FETCHING", current: 0, total: 0 } : null,
         error: error || actionError,
         feedArticleCounts,
         updating,

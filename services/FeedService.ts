@@ -24,13 +24,13 @@ export class FeedService {
     private ranking: ArticleRankingService,
   ) {}
 
-  // Obtiene contenido de cache INMEDIATAMENTE, sin importar antigüedad
-  // No hace fetch en background - eso es responsabilidad del usuario
+  // Get cached content immediately, regardless of age
+  // No background fetch - user is responsible for that
   getFeedContent = async (url: string): Promise<FeedData | undefined> => {
     const cached = await this.cache.get(url);
 
     if (cached) {
-      // Enchanche with cached article metadata
+      // Enhance with cached article metadata
       const enhancedItems = await this.enhanceItemsWithCache(
         cached.data.rss?.channel?.item,
       );
