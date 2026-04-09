@@ -11,7 +11,7 @@ export default function FeedPage() {
   const { colors, fonts, sizes, style } = useStyles();
   const { feed_url } = useLocalSearchParams<{ feed_url: string }>();
   const router = useRouter();
-  const { data, loading, isRefreshing, error } = useFeedContent(feed_url);
+  const { data, loading, error } = useFeedContent(feed_url);
   const content = data?.rss?.channel?.item;
   const title = data?.rss?.channel?.title;
   const date = data?.date?.toString();
@@ -32,7 +32,7 @@ export default function FeedPage() {
           ?.map(
             ({ title, link, author, heroImage }: FeedContentItem) => `
             <div 
-              class="item" 
+              class="item ${heroImage ? "with-hero" : ""}" 
               data-route-link="${getRouteLink(link)}" 
             >
               ${heroImage ? `<div class="hero-image"><img src="${heroImage}"></img></div>` : ""}
@@ -52,6 +52,10 @@ export default function FeedPage() {
         padding: ${sizes.s1}px 0;
         text-decoration: none;
         break-inside: avoid;
+      }
+
+      .item.with-hero {
+        padding: ${sizes.s0_50}px 0;
       }
 
       ${previousArticleUrl ? `.item[data-route-link*="${getRouteLink(previousArticleUrl)}"] { border-bottom-width: 5px; }` : ""}
@@ -74,16 +78,16 @@ export default function FeedPage() {
 
       .hero-image {
         width: 100%;
-        aspect-ratio: 16 / 6;
+        aspect-ratio: 16 / 5;
         overflow: hidden;
-        margin-bottom: ${sizes.s0_50}px;
+        margin: 0 0  ${sizes.s0_50} 0;
       }
 
       .hero-image img {
         width: 100%;
         height: 100%;
         object-fit: cover;
-        object-position: top;
+        object-position: 50% 20%;
       }
 
       .description {
@@ -123,9 +127,7 @@ export default function FeedPage() {
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
-                {isRefreshing
-                  ? "Updating... "
-                  : `Updated ${formatLastRefresh(date)}`}
+                {loading ? "Loading..." : `Updated ${formatLastRefresh(date)}`}
               </Text>
             </View>
           ),
@@ -140,9 +142,13 @@ export default function FeedPage() {
 
       {((!loading && !content) || error) && (
         <>
-          <Text>The app has failed to get the feed content</Text>
-          <Text>content: {JSON.stringify(data, null, 4)}</Text>
-          <Text>error:{JSON.stringify(error)}</Text>
+          <Text style={style.content}>
+            The app has failed to get the feed list
+          </Text>
+          <Text style={style.contentCode}>
+            content: {JSON.stringify(data, null, 4)}
+          </Text>
+          <Text style={style.contentCode}>error:{JSON.stringify(error)}</Text>
         </>
       )}
 
@@ -200,6 +206,17 @@ function useStyles() {
       height: 18,
       color: colors.text,
       overflow: "hidden",
+    },
+    content: {
+      fontSize: fonts.fontSizeP,
+      color: colors.text,
+      padding: sizes.s1,
+    },
+    contentCode: {
+      fontFamily: fonts.fontFamilyCodeRegular,
+      fontSize: fonts.fontSizeCode,
+      color: colors.text,
+      padding: sizes.s1,
     },
   });
 

@@ -32,12 +32,18 @@ export default function SearchFeedUrl() {
 
     setLoading(true);
     setError(null);
-    setResults(null);
+    setResults([]); // Start with empty array to show items progressively
     lastSearchRef.current = search.trim();
+    const seenUrls = new Set<string>();
 
     try {
-      const feeds = await feedDiscoveryService.discoverFeeds(search.trim());
-      setResults(feeds);
+      await feedDiscoveryService.discoverFeeds(search.trim(), (feed) => {
+        // Avoid duplicates in UI
+        if (!seenUrls.has(feed.url)) {
+          seenUrls.add(feed.url);
+          setResults((prev) => [...(prev ?? []), feed]);
+        }
+      });
     } catch (err) {
       setError(`Could not find feeds: ${err}`);
     } finally {

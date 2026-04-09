@@ -4,6 +4,7 @@ import { useState } from "react";
 import { HandleRouterLinkData } from "@/types";
 import { useThemeContext } from "@/theme/ThemeProvider";
 import { HTMLPagesNav } from "@/components/HTMLPagesNav";
+import { NewArticlesToast } from "@/components/NewArticlesToast";
 import { usePreviousRoute } from "~/providers/PreviousRoute";
 import { useFeedsContext } from "@/providers/FeedsProvider";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -16,10 +17,30 @@ export default function Feeds() {
     loading,
     error,
     feedArticleCounts,
-    prefetching,
+    updating,
     lastFullRefreshAt,
+    shouldShowUpdateToast,
     refreshAllFeeds,
+    refreshAndUpdateToast,
+    dismissToast,
   } = useFeedsContext();
+
+  const getStatusLabel = (status: {
+    name: string;
+    current: number;
+    total: number;
+  }) => {
+    switch (status.name) {
+      case "FETCHING":
+        return `Fetching feeds ${status.current} of ${status.total}`;
+      case "PRELOADING":
+        return `Preloading articles ${status.current} of ${status.total}`;
+      default:
+        return "Loading...";
+    }
+  };
+
+  const loadingStatus = loading || updating;
   const router = useRouter();
   const [resetNavigation, setResetNavigation] = useState(1);
 
@@ -30,12 +51,12 @@ export default function Feeds() {
 
   const visibleFeeds = feeds?.filter(
     ({ url }) =>
-      feedArticleCounts[url] === undefined || feedArticleCounts[url] > 0,
+      feedArticleCounts[url] !== undefined && feedArticleCounts[url] > 0,
   );
 
   const htmlItems =
     visibleFeeds?.length === 0
-      ? '<div class="no-new-conent">No feeds found</div>'
+      ? '<div class="no-new-conent"><h3>No content to show.</h3> <p>Swipe down to get updates <br />or add a new feed.</p></div>'
       : visibleFeeds
           ?.map(
             ({ name, url }: any) => `
@@ -101,46 +122,75 @@ export default function Feeds() {
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
-                {prefetching
-                  ? "Updating..."
+                {updating
+                  ? ""
                   : `Last full update at ${formatLastRefresh(lastFullRefreshAt)}`}
               </Text>
             </View>
           ),
           headerRight: () => (
-            <>
-              <Link href="/config/feedList" asChild>
-                <Pressable
-                  style={style.rightButton}
-                  android_ripple={{ color: colors.textGrey, borderless: true }}
-                >
-                  <MaterialIcons
-                    name="settings"
-                    size={sizes.s1}
-                    color={colors.text}
-                  />
-                </Pressable>
-              </Link>
-            </>
+            <Link href="/config/feedList" asChild>
+              <Pressable
+                style={style.rightButton}
+                android_ripple={{ color: colors.textGrey, borderless: true }}
+              >
+                <MaterialIcons
+                  name="settings"
+                  size={sizes.s1}
+                  color={colors.text}
+                />
+              </Pressable>
+            </Link>
           ),
         }}
       />
 
-      {loading && (
+      <NewArticlesToast
+        visible={shouldShowUpdateToast}
+        onPress={refreshAndUpdateToast}
+        onDismiss={dismissToast}
+      />
+
+      {loadingStatus && (
         <Text style={{ color: colors.text, padding: sizes.s1 }}>
-          Loading...
+          {getStatusLabel(loadingStatus)}
         </Text>
       )}
 
-      {((!loading && !feeds) || error) && (
+      {((!loadingStatus && !feeds) || error) && (
         <>
-          <Text>The app has failed to get the feed list</Text>
-          <Text>content: {JSON.stringify(feeds, null, 4)}</Text>
-          <Text>error:{JSON.stringify(error)}</Text>
+          <Text style={style.content}>
+            The app has failed to get the feed list
+          </Text>
+          <Text style={style.contentCode}>
+            content: {JSON.stringify(feeds, null, 4)}
+          </Text>
+          <Text style={style.contentCode}>error:{JSON.stringify(error)}</Text>
         </>
       )}
 
-      {!loading && feeds && (
+      {!loadingStatus && feeds?.length === 0 && !error && (
+        <View style={style.contentWrapper}>
+          <Text style={style.content}>There are no feeds to show</Text>
+          <View style={style.actions}>
+            <Link href="/searchFeedUrl" asChild>
+              <Pressable style={style.button}>
+                <Text style={style.buttonText}>Add your first feed</Text>
+              </Pressable>
+            </Link>
+
+            <Text style={style.buttonText}>or</Text>
+
+            <Link href="/config/settings" asChild>
+              <Pressable style={style.button}>
+                <Text style={style.buttonText}>Go to configurations</Text>
+              </Pressable>
+            </Link>
+          </View>
+        </View>
+      )}
+
+      {!loadingStatus && feeds && feeds.length > 0 && !error && (
         <HTMLPagesNav
           key={resetNavigation}
           name="feed"
@@ -197,6 +247,40 @@ function useStyles() {
       height: 18,
       color: colors.text,
       overflow: "hidden",
+    },
+    contentWrapper: {
+      padding: sizes.s1,
+      backgroundColor: colors.background,
+      flexGrow: 1,
+    },
+    content: {
+      fontFamily: fonts.fontFamilyRegular,
+      fontSize: fonts.fontSizeP,
+      color: colors.text,
+    },
+    contentCode: {
+      fontFamily: fonts.fontFamilyCodeRegular,
+      fontSize: fonts.fontSizeCode,
+      color: colors.text,
+    },
+    actions: {
+      flex: 1,
+      flexDirection: "column",
+      gap: sizes.s1,
+      marginVertical: sizes.s1,
+    },
+    button: {
+      backgroundColor: colors.background,
+      paddingVertical: sizes.s0_50,
+      paddingHorizontal: sizes.s1,
+      borderWidth: 1,
+      borderColor: colors.text,
+    },
+    buttonText: {
+      color: colors.text,
+      fontSize: fonts.baseFontSize,
+      fontFamily: fonts.fontFamilyBold,
+      textAlign: "center",
     },
   });
 

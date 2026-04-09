@@ -76,7 +76,11 @@ export function ArticleView({ article_url, actions }: Props) {
         </Text>
       )}
 
-      {error && <Text>The app has failed to get article content</Text>}
+      {error && (
+        <Text style={styles.content}>
+          The app has failed to get article content
+        </Text>
+      )}
 
       {!loading && article && (
         <HTMLPagesNav
@@ -96,7 +100,7 @@ export function ArticleView({ article_url, actions }: Props) {
 
 function useStyles() {
   const { theme } = useThemeContext();
-  const { colors, sizes } = theme;
+  const { colors, sizes, fonts } = theme;
 
   const styles = StyleSheet.create({
     headerContainer: {
@@ -114,6 +118,11 @@ function useStyles() {
       height: 18,
       color: colors.text,
       overflow: "hidden",
+    },
+    content: {
+      fontSize: fonts.fontSizeP,
+      color: colors.text,
+      padding: sizes.s1,
     },
   });
 

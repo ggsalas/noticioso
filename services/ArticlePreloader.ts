@@ -7,17 +7,11 @@ import {
 import type { FeedContentItem } from "~/types";
 
 export interface PreloadConfig {
-  totalArticles: number;
-  maxPerFeed: number;
-  activeFeedCount: number;
   maxConcurrentDownloads: number;
 }
 
 const DEFAULT_CONFIG: PreloadConfig = {
-  totalArticles: 200,
-  maxPerFeed: 10,
-  activeFeedCount: 1,
-  maxConcurrentDownloads: 3,
+  maxConcurrentDownloads: 5,
 };
 
 export class ArticlePreloader {
@@ -27,30 +21,21 @@ export class ArticlePreloader {
     private config: PreloadConfig,
   ) {}
 
-  preloadForFeed = async (
+  // Preload a list of feed articles
+  preloadFeedItems = async (
     items: FeedContentItem[] | undefined,
-    feedCount: number,
+    onProgress?: (current: number, total: number) => void,
   ): Promise<void> => {
     if (!items || items.length === 0) return;
 
-    const articlesPerFeed = Math.min(
-      this.config.maxPerFeed,
-      Math.ceil(this.config.totalArticles / feedCount),
-    );
-
-    // Take first N items in feed order
-    const selectedItems = items.slice(0, articlesPerFeed);
-    if (selectedItems.length === 0) return;
-
-    // Filter out already cached articles
-    const urls = selectedItems.map((item) => item.link).filter(Boolean);
+    const urls = items.map((item) => item.link).filter(Boolean);
     const urlsToFetch = await this.filterUncachedUrls(urls);
     if (urlsToFetch.length === 0) return;
 
-    // Download in batches
-    const tasks = urlsToFetch.map(
-      (url) => () => this.articleService.fetchArticleContent(url),
-    );
+    const tasks = urlsToFetch.map((url, index) => () => {
+      onProgress?.(index + 1, urlsToFetch.length);
+      return this.articleService.fetchAndCacheHtml(url);
+    });
 
     await batchPromises(tasks, this.config.maxConcurrentDownloads);
   };
@@ -58,17 +43,16 @@ export class ArticlePreloader {
   private filterUncachedUrls = async (urls: string[]): Promise<string[]> => {
     if (urls.length === 0) return [];
 
-    // Check cache in parallel for all URLs
+    // Check if URL exists in cache using has() method
     const results = await Promise.all(
       urls.map(async (url) => {
-        const metadata = await this.articleCache.getMetadata(url);
-        return { url, metadata };
+        const exists = await this.articleCache.has(url);
+        return { url, exists };
       }),
     );
 
-    return results
-      .filter(({ metadata }) => metadata === null)
-      .map(({ url }) => url);
+    // Return only URLs that are NOT in cache
+    return results.filter(({ exists }) => !exists).map(({ url }) => url);
   };
 }
 

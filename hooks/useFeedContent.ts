@@ -7,6 +7,7 @@ type UseFeedContent = {
   loading: boolean;
   isRefreshing: boolean;
   error: string | null;
+  refreshContent: () => Promise<void>;
 };
 
 export const useFeedContent = (url: string): UseFeedContent => {
@@ -18,25 +19,30 @@ export const useFeedContent = (url: string): UseFeedContent => {
   const fetchContent = useCallback(async () => {
     setError(null);
 
-    let hadCache = false;
-
-    const onCacheLoaded = (cached: FeedData) => {
-      hadCache = true;
-      setData(cached);
-      setLoading(false);
-      setIsRefreshing(true);
-    };
-
     try {
-      const fresh = await feedService.getFeedContent(url, onCacheLoaded);
-      setData(fresh);
+      setLoading(true);
+      const data = await feedService.getFeedContent(url);
+
+      if (data) {
+        setData(data);
+      }
+      setLoading(false);
     } catch (err) {
-      // If we already showed cached data, don't wipe it — just stop refreshing
-      if (!hadCache) {
-        setError(err instanceof Error ? err.message : "An unknown error occurred");
+      setLoading(false);
+      setError(
+        err instanceof Error ? err.message : "An unknown error occurred",
+      );
+    }
+  }, [url]);
+
+  const refreshContent = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      const data = await feedService.getFeedContent(url);
+      if (data) {
+        setData(data);
       }
     } finally {
-      setLoading(false);
       setIsRefreshing(false);
     }
   }, [url]);
@@ -45,5 +51,11 @@ export const useFeedContent = (url: string): UseFeedContent => {
     fetchContent();
   }, [fetchContent]);
 
-  return { data, loading, isRefreshing, error };
+  return {
+    data,
+    loading,
+    isRefreshing,
+    error,
+    refreshContent,
+  };
 };

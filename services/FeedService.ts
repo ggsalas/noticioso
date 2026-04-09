@@ -6,6 +6,10 @@ import {
   ArticleCacheService,
 } from "./ArticleCacheService";
 import { articlePreloader, ArticlePreloader } from "./ArticlePreloader";
+import {
+  articleRankingService,
+  ArticleRankingService,
+} from "./ArticleRankingService";
 import type { Feed, FeedData, FeedContentItem } from "~/types";
 import { parseAndNormalizeFeed } from "@/lib/feedSchema";
 
@@ -17,24 +21,43 @@ export class FeedService {
     private cache: FeedCacheService,
     private articleCache: ArticleCacheService,
     private preloader: ArticlePreloader,
+    private ranking: ArticleRankingService,
   ) {}
 
-  getFeedContent = async (
-    url: string,
-    onCacheLoaded?: (data: FeedData) => void,
-  ): Promise<FeedData> => {
-    try {
-      // Serve from cache immediately if available
-      if (onCacheLoaded) {
-        const cached = await this.cache.get(url);
-        if (cached) {
-          onCacheLoaded(cached.data);
-        }
-      }
+  // Get cached content immediately, regardless of age
+  // No background fetch - user is responsible for that
+  getFeedContent = async (url: string): Promise<FeedData | undefined> => {
+    const cached = await this.cache.get(url);
 
+    if (cached) {
+      // Enhance with cached article metadata
+      const enhancedItems = await this.enhanceItemsWithCache(
+        cached.data.rss?.channel?.item,
+      );
+      const enhancedData: FeedData = {
+        ...cached.data,
+        rss: {
+          ...cached.data.rss,
+          channel: {
+            ...cached.data.rss.channel,
+            item: enhancedItems ?? [],
+          },
+        },
+      };
+      return enhancedData;
+    }
+
+    // No cache - return undefined so UI shows empty state
+    return undefined;
+  };
+
+  // Basic fetch of a feed (without preload) - used internally
+  private fetchFeedBasic = async (
+    url: string,
+  ): Promise<FeedData | undefined> => {
+    try {
       const feed = await this.getFeedByUrl(url);
 
-      // Fetch and parse RSS content
       const res = await fetch(url, { method: "GET" });
       if (!res.ok) {
         throw new Error(
@@ -46,37 +69,85 @@ export class FeedService {
       const { feedType, channel } = parseAndNormalizeFeed(data);
       const items = this.filterByDate(channel.item, feed?.oldestArticle);
 
-      // Preload articles into cache
-      const feeds = await this.getFeeds();
-      const feedCount = feeds?.length ?? 1;
-      await this.preloader.preloadForFeed(items, feedCount);
-
-      // Enhance items with cached article metadata
-      const enhancedItems = await this.enhanceItemsWithCache(items);
-
-      // Build the normalized FeedData
       const feedContent: FeedData = {
         date: new Date(),
         feedType,
         rss: {
           channel: {
             ...channel,
-            item: enhancedItems
-              ? enhancedItems.map(({ description, ...rest }) => ({
-                  ...rest,
-                  description: this.sanitizeContent(description),
-                }))
-              : [],
+            title: channel.title,
+            description: channel.description,
+            language: channel.language,
+            link: channel.link,
+            lastBuildDate: channel.lastBuildDate,
+            item: items ?? [],
           },
         },
       };
 
-      await this.cache.set(url, feedContent);
+      // Cache the feed
+      try {
+        await this.cache.set(url, feedContent);
+      } catch (cacheError) {
+        console.warn(`Failed to cache feed ${url}:`, cacheError);
+      }
 
       return feedContent;
     } catch (error) {
-      throw new Error(`Error fetching feed content: ${error}`);
+      console.error(`Error fetching feed content for ${url}:`, error);
+      return undefined;
     }
+  };
+
+  // Get ALL updated feeds (basic metadata of each article)
+  fetchAllFeeds = async (): Promise<FeedData[]> => {
+    const feeds = await this.getFeeds();
+    if (!feeds || feeds.length === 0) return [];
+
+    const results: FeedData[] = [];
+
+    for (const feed of feeds) {
+      const feedContent = await this.fetchFeedBasic(feed.url);
+      if (feedContent) {
+        results.push(feedContent);
+      }
+    }
+
+    return results;
+  };
+
+  // Orchestras: fetchAllFeeds -> setRanking -> preloadFeedItems
+  fetchAndCacheAllFeedsRanked = async (
+    onProgress?: (
+      name: "FETCHING" | "PRELOADING",
+      current: number,
+      total: number,
+    ) => void,
+  ): Promise<void> => {
+    const feeds = await this.getFeeds();
+    if (!feeds || feeds.length === 0) return;
+
+    const feedsData: FeedData[] = [];
+
+    // 1. Fetch all feeds
+    for (let i = 0; i < feeds.length; i++) {
+      onProgress?.("FETCHING", i + 1, feeds.length);
+      const feedContent = await this.fetchFeedBasic(feeds[i].url);
+      if (feedContent) {
+        feedsData.push(feedContent);
+      }
+    }
+
+    // 2. Apply ranking and get scoreMap
+    const { scoreMap } = await this.ranking.setRanking(feedsData);
+
+    // 3. Filter articles with score >= 9 (only top 5 of each feed with score 10)
+    const itemsToPreload = this.ranking.filterByScore(feedsData, scoreMap, 9);
+
+    // 4. Preload selected articles
+    await this.preloader.preloadFeedItems(itemsToPreload, (current, total) =>
+      onProgress?.("PRELOADING", current, total),
+    );
   };
 
   getFeeds = async (_?: undefined): Promise<Feed[] | undefined> => {
@@ -167,14 +238,23 @@ export class FeedService {
 
   private isValidFeed(feed: unknown): feed is Feed {
     const f = feed as Feed;
+    const idValid = typeof f.id === "string" || typeof f.id === "number";
+    const oldestValid =
+      typeof f.oldestArticle === "number" ||
+      typeof f.oldestArticle === "string";
+    const oldestValue =
+      typeof f.oldestArticle === "string"
+        ? parseInt(f.oldestArticle, 10)
+        : f.oldestArticle;
     return !!(
+      idValid &&
       f.id &&
       typeof f.name === "string" &&
       f.name &&
       typeof f.url === "string" &&
       f.url &&
-      typeof f.oldestArticle === "number" &&
-      f.oldestArticle >= 1 &&
+      oldestValid &&
+      oldestValue >= 1 &&
       typeof f.lang === "string" &&
       f.lang
     );
@@ -213,7 +293,6 @@ export class FeedService {
     );
 
     return items.filter((item) => {
-      // Include items without pubDate
       if (!item.pubDate) return true;
 
       const itemDate = new Date(item.pubDate);
@@ -228,37 +307,37 @@ export class FeedService {
   ): Promise<FeedContentItem[] | undefined> => {
     if (!items) return undefined;
 
-    // Fetch metadata for all items in parallel
     const metadataResults = await Promise.all(
       items.map(async (item) => {
         try {
           const metadata = await this.articleCache.getMetadata(item.link);
           return { item, metadata };
         } catch {
-          // Gracefully handle individual cache lookup failures
           return { item, metadata: null };
         }
       }),
     );
 
-    // Map items with enhanced metadata
     return metadataResults.map(({ item, metadata }) => {
       if (!metadata) return item;
 
-      // Use byline from cache as author if available, non-empty (after trim), and is a string
       const hasValidByline =
         typeof metadata.byline === "string" &&
         metadata.byline.trim().length > 0;
 
       return {
         ...item,
-        // Replace author with byline from cache if valid
         ...(hasValidByline && { author: metadata.byline }),
-        // Add cached metadata as extended fields
         ...(metadata.heroImage && { heroImage: metadata.heroImage }),
         ...(metadata.excerpt && { excerpt: metadata.excerpt }),
       };
     });
+  };
+
+  clearCaches = async (onComplete?: () => void): Promise<void> => {
+    await this.storage.clearCaches();
+    await this.articleCache.clearFileCache();
+    onComplete?.();
   };
 }
 
@@ -267,4 +346,5 @@ export const feedService = new FeedService(
   feedCacheService,
   articleCacheService,
   articlePreloader,
+  articleRankingService,
 );
