@@ -334,9 +334,10 @@ export class FeedService {
     });
   };
 
-  clearCaches = async (): Promise<void> => {
+  clearCaches = async (onComplete?: () => void): Promise<void> => {
     await this.storage.clearCaches();
     await this.articleCache.clearFileCache();
+    onComplete?.();
   };
 }
 

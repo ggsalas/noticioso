@@ -40,6 +40,7 @@ type FeedsContextType = {
   refreshAllFeeds: () => Promise<void>;
   dismissToast: () => void;
   refreshAndUpdateToast: () => Promise<void>;
+  clearFeedArticleCounts: () => void;
 };
 
 const FeedsContext = createContext<FeedsContextType>({
@@ -54,6 +55,7 @@ const FeedsContext = createContext<FeedsContextType>({
   refreshAllFeeds: async () => {},
   dismissToast: () => {},
   refreshAndUpdateToast: async () => {},
+  clearFeedArticleCounts: () => {},
 });
 
 export function FeedsProvider({ children }: FeedsProviderProps) {
@@ -199,6 +201,10 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
     setShouldShowUpdateToast(false);
   }, []);
 
+  const clearFeedArticleCounts = useCallback(() => {
+    setFeedArticleCounts({});
+  }, []);
+
   const refreshAndUpdateToast = useCallback(async () => {
     console.log("[FeedsProvider] refreshAndUpdateToast called");
     setShouldShowUpdateToast(false);
@@ -280,6 +286,7 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
         refreshAllFeeds,
         dismissToast,
         refreshAndUpdateToast,
+        clearFeedArticleCounts,
       }}
     >
       {children}

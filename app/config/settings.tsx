@@ -1,10 +1,45 @@
-import { Pressable, Text, View, StyleSheet, ScrollView } from "react-native";
+import {
+  Pressable,
+  Text,
+  View,
+  StyleSheet,
+  ScrollView,
+  Alert,
+} from "react-native";
+import { useState } from "react";
 import { useThemeContext } from "@/theme/ThemeProvider";
 import { MaterialIcons } from "@expo/vector-icons";
 import { ImportExportFeeds } from "@/components/ImportExportFeeds";
+import { feedService } from "@/services/FeedService";
+import { useFeedsContext } from "@/providers/FeedsProvider";
 
 export default function Settings() {
   const { s, changeFontSize, sizes } = useStyles();
+  const { clearFeedArticleCounts } = useFeedsContext();
+  const [cacheCleared, setCacheCleared] = useState(false);
+
+  const handleClearCache = async () => {
+    Alert.alert(
+      "Clear all cache data",
+      "This will delete all cached articles and feed data. Are you sure?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Clear",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await feedService.clearCaches(() => setCacheCleared(true));
+              clearFeedArticleCounts();
+              setTimeout(() => setCacheCleared(false), 2000);
+            } catch (e) {
+              console.error("Failed to clear caches:", e);
+            }
+          },
+        },
+      ],
+    );
+  };
 
   return (
     <ScrollView style={s.scrollView}>
@@ -40,6 +75,15 @@ export default function Settings() {
         </View>
 
         <ImportExportFeeds />
+
+        <View style={[s.hero, { borderBottomWidth: 0, borderTopWidth: 1 }]}>
+          <Text style={s.heroText}>Clear cache</Text>
+          <Pressable style={s.button} onPress={handleClearCache}>
+            <Text style={s.buttonText}>
+              {cacheCleared ? "Cache cleared!" : "Clear stored cache"}
+            </Text>
+          </Pressable>
+        </View>
       </View>
     </ScrollView>
   );
@@ -88,6 +132,8 @@ function useStyles() {
     },
     buttonText: {
       color: colors.backgroundDark_text,
+      textAlign: "center",
+      fontSize: fonts.fontSizeSmall,
     },
     buttonWhite: {
       paddingVertical: sizes.s0_50,
