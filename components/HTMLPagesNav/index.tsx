@@ -1,5 +1,5 @@
 import { useThemeContext } from "@/theme/ThemeProvider";
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, Dimensions, Animated, View } from "react-native";
 import { WebView, WebViewMessageEvent } from "react-native-webview";
 import {
@@ -24,6 +24,7 @@ type HTMLPaesNavProps = {
   actions: HTMLPagesNavActions;
   handleLink?: (data: HandleLinkData) => void;
   handleRouterLink?: (data: HandleRouterLinkData) => void;
+  postLoadScript?: string;
 };
 
 export function HTMLPagesNavComponent({
@@ -32,11 +33,14 @@ export function HTMLPagesNavComponent({
   actions,
   handleLink,
   handleRouterLink,
+  postLoadScript,
 }: HTMLPaesNavProps) {
   const webviewRef = useRef<WebView>(null);
   const { width, height } = Dimensions.get("window");
   const { styles, theme } = useStyles(width);
   const [pages, setPages] = useState<Pages>({
+    amount: 0,
+    current: 0,
     scrollLeft: 0,
     isFirst: true,
     isLast: false,
@@ -48,11 +52,18 @@ export function HTMLPagesNavComponent({
     webviewRef,
   });
 
-  const content = getHorizontalNavigationPage({
-    content: html,
-    width: styles.webView.width,
-    theme,
-  });
+  const content = useMemo(
+    () =>
+      getHorizontalNavigationPage({
+        content: html,
+        width: styles.webView.width,
+        theme,
+      }),
+    [html, styles.webView.width, theme],
+  );
+
+  // Memoize source object so the WebView only reloads when content actually changes.
+  const source = useMemo(() => ({ html: content }), [content]);
 
   const webViewEvents = getWebViewEvents(name);
   const {
@@ -73,7 +84,19 @@ export function HTMLPagesNavComponent({
     `);
   }, []);
 
-  useFocusEffect(() => handleScroll(pages.scrollLeft));
+  // useFocusEffect(
+  //   useCallback(() => {
+  //     handleScroll(pages.scrollLeft);
+  //   }, [pages.scrollLeft, handleScroll]),
+  // );
+
+  // Inject postLoadScript whenever it changes (e.g. highlight on navigation back)
+  // without needing the WebView to reload.
+  useEffect(() => {
+    if (postLoadScript) {
+      webviewRef.current?.injectJavaScript(postLoadScript);
+    }
+  }, [postLoadScript]);
 
   // Receives messages from JS inside page content
   const onMessage = (event: WebViewMessageEvent) => {
@@ -140,7 +163,13 @@ export function HTMLPagesNavComponent({
       case SWIPE_BOTTOM:
         return actions.bottom && actions.bottom.action();
       case ON_LOAD: {
-        return handlePages();
+        handlePages();
+        // Safety net: also inject postLoadScript after a reload
+        // (useEffect covers the no-reload case on navigation back)
+        if (postLoadScript) {
+          webviewRef.current?.injectJavaScript(postLoadScript);
+        }
+        return;
       }
       case HANDLE_LINK:
         return handleLink && handleLink(data);
@@ -184,7 +213,7 @@ export function HTMLPagesNavComponent({
           ref={webviewRef}
           style={[styles.webView, { opacity: pages.amount > 0 ? 1 : 0 }]}
           originWhitelist={["*"]}
-          source={{ html: content }}
+          source={source}
           showsHorizontalScrollIndicator={false}
           showsVerticalScrollIndicator={false}
           scrollEnabled={false}
