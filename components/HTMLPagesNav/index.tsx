@@ -16,7 +16,6 @@ import {
 } from "@/types";
 import { PageIndicator } from "./PageIndicator";
 import { getWebViewEvents } from "./webViewEvents";
-import { useFocusEffect } from "expo-router";
 
 type HTMLPaesNavProps = {
   name: string;
@@ -80,15 +79,9 @@ export function HTMLPagesNavComponent({
   const handleScroll = useCallback((scrollLeft: number) => {
     webviewRef.current?.injectJavaScript(`
       document.getElementById("viewport").scrollLeft = ${scrollLeft};
-      true;
+      true; // required by injectJavaScript — the script must evaluate to true
     `);
   }, []);
-
-  // useFocusEffect(
-  //   useCallback(() => {
-  //     handleScroll(pages.scrollLeft);
-  //   }, [pages.scrollLeft, handleScroll]),
-  // );
 
   // Inject postLoadScript whenever it changes (e.g. highlight on navigation back)
   // without needing the WebView to reload.

@@ -135,7 +135,7 @@ export default function FeedPage() {
           }
         });
       })();
-      true;
+      true; // required by injectJavaScript — the script must evaluate to true
     `;
   }, [previousArticleUrl, getRouteLink]);
 
