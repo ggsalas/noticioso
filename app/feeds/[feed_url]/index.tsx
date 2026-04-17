@@ -60,11 +60,11 @@ export default function FeedPage() {
         flex-direction: column;
         padding: ${sizes.s1}px 0;
         text-decoration: none;
-        break-inside: avoid;
+        break-inside: avoid-column;
       }
 
       .item.with-hero {
-        padding: ${sizes.s0_50}px 0;
+        padding: 0 0 ${sizes.s1}px 0;
       }
 
       .title {
@@ -79,8 +79,8 @@ export default function FeedPage() {
         color: ${colors.text};
         font-size: ${fonts.fontSizeSmall}px;
         font-style: italic;
-        line-height: ${fonts.lineHeightComfortable}px;
-        margin: 0;
+        line-height: ${fonts.lineHeightMinimal}px;
+        margin: ${sizes.s0_25}px 0 0 0;
       }
 
       .hero-image {

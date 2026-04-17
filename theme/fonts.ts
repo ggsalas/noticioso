@@ -55,7 +55,7 @@ export function getFonts(baseFontSize: number): Fonts {
     fontSizeSmall: baseFontSize * 0.8,
     fontSizeCode: baseFontSize * 0.7,
 
-    lineHeightMinimal: baseFontSize * 1,
+    lineHeightMinimal: baseFontSize * 1.15,
     lineHeightSmall: baseFontSize * 1.3,
     lineHeightComfortable: baseFontSize * 1.4,
     lineHeightCode: baseFontSize * 0.7 * 1.2,
