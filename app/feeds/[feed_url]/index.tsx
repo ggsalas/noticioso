@@ -7,6 +7,7 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useMemo } from "react";
 import { Text, View, StyleSheet } from "react-native";
 import { formatLastRefresh } from "~/formatters/timeFormatters";
+import { useWebViewHighlight } from "~/hooks/useWebViewHighlight";
 
 export default function FeedPage() {
   const { colors, fonts, sizes, style } = useStyles();
@@ -26,7 +27,8 @@ export default function FeedPage() {
     [feed_url],
   );
 
-  // TODO: only important articles should have Hero
+  const postLoadScript = useWebViewHighlight(previousArticleUrl, getRouteLink);
+
   const htmlItems = useMemo(() => {
     if (content?.length === 0) {
       return '<div class="no-new-conent">No new content for this feed</div>';
@@ -49,8 +51,6 @@ export default function FeedPage() {
     );
   }, [content, getRouteLink]);
 
-  // html does NOT include previousArticleUrl so the WebView source stays stable
-  // on navigation back. The highlight is applied via postLoadScript instead.
   const html = useMemo(
     () => `
     <style>
@@ -70,7 +70,7 @@ export default function FeedPage() {
       .title {
         color: ${colors.text};
         font-size: ${fonts.fontSizeH4}px;
-        line-height: ${fonts.lineHeightComfortable}px;
+        line-height: ${fonts.lineHeightMinimal}px;
         font-weight: bold;
         margin: 0;
       }
@@ -117,27 +117,6 @@ export default function FeedPage() {
   `,
     [htmlItems, colors, fonts, sizes],
   );
-
-  // Highlight the previously read article by injecting a style after load,
-  // without changing the WebView source (which would trigger a full reload).
-  const postLoadScript = useMemo(() => {
-    if (!previousArticleUrl) return undefined;
-    const routePath = getRouteLink(previousArticleUrl);
-    return `
-      (function() {
-        var items = document.querySelectorAll('[data-route-link]');
-        items.forEach(function(el) {
-          var link = el.getAttribute('data-route-link');
-          if (link && link.includes(${JSON.stringify(routePath)})) {
-            el.style.setProperty('border-bottom-width', '5px');
-          } else {
-            el.style.removeProperty('border-bottom-width');
-          }
-        });
-      })();
-      true; // required by injectJavaScript — the script must evaluate to true
-    `;
-  }, [previousArticleUrl, getRouteLink]);
 
   return (
     <>
