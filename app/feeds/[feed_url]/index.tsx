@@ -4,8 +4,10 @@ import { usePreviousRoute } from "~/providers/PreviousRoute";
 import { useThemeContext } from "@/theme/ThemeProvider";
 import { FeedContentItem, HandleLinkData, HandleRouterLinkData } from "@/types";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useMemo } from "react";
 import { Text, View, StyleSheet } from "react-native";
 import { formatLastRefresh } from "~/formatters/timeFormatters";
+import { useWebViewHighlight } from "~/hooks/useWebViewHighlight";
 
 export default function FeedPage() {
   const { colors, fonts, sizes, style } = useStyles();
@@ -19,18 +21,22 @@ export default function FeedPage() {
   const previousRoute = usePreviousRoute<{ article_url: string }>();
   const previousArticleUrl = previousRoute?.params?.article_url;
 
-  const getRouteLink = (link: string) =>
-    `/feeds/${encodeURIComponent(
-      feed_url,
-    )}/articles/${encodeURIComponent(link)}`;
+  const getRouteLink = useCallback(
+    (link: string) =>
+      `/feeds/${encodeURIComponent(feed_url)}/articles/${encodeURIComponent(link)}`,
+    [feed_url],
+  );
 
-  // TODO: only important articles should have Hero
-  const htmlItems =
-    content?.length === 0
-      ? '<div class="no-new-conent">No new content for this feed</div>'
-      : content
-          ?.map(
-            ({ title, link, author, heroImage }: FeedContentItem) => `
+  const postLoadScript = useWebViewHighlight(previousArticleUrl, getRouteLink);
+
+  const htmlItems = useMemo(() => {
+    if (content?.length === 0) {
+      return '<div class="no-new-content">No new content for this feed</div>';
+    }
+    return (
+      content
+        ?.map(
+          ({ title, link, author, heroImage }: FeedContentItem) => `
             <div 
               class="item ${heroImage ? "with-hero" : ""}" 
               data-route-link="${getRouteLink(link)}" 
@@ -40,10 +46,13 @@ export default function FeedPage() {
               ${author ? '<p class="author">' + author + "</p>" : ""}
             </div>
           `,
-          )
-          .join("");
+        )
+        .join("") ?? ""
+    );
+  }, [content, getRouteLink]);
 
-  const html = `
+  const html = useMemo(
+    () => `
     <style>
       .item {
         border-bottom: 1px solid ${colors.borderDark};
@@ -51,19 +60,17 @@ export default function FeedPage() {
         flex-direction: column;
         padding: ${sizes.s1}px 0;
         text-decoration: none;
-        break-inside: avoid;
+        break-inside: avoid-column;
       }
 
       .item.with-hero {
-        padding: ${sizes.s0_50}px 0;
+        padding: 0 0 ${sizes.s1}px 0;
       }
-
-      ${previousArticleUrl ? `.item[data-route-link*="${getRouteLink(previousArticleUrl)}"] { border-bottom-width: 5px; }` : ""}
 
       .title {
         color: ${colors.text};
         font-size: ${fonts.fontSizeH4}px;
-        line-height: ${fonts.lineHeightComfortable}px;
+        line-height: ${fonts.lineHeightMinimal}px;
         font-weight: bold;
         margin: 0;
       }
@@ -72,8 +79,8 @@ export default function FeedPage() {
         color: ${colors.text};
         font-size: ${fonts.fontSizeSmall}px;
         font-style: italic;
-        line-height: ${fonts.lineHeightComfortable}px;
-        margin: 0;
+        line-height: ${fonts.lineHeightMinimal}px;
+        margin: ${sizes.s0_25}px 0 0 0;
       }
 
       .hero-image {
@@ -96,7 +103,7 @@ export default function FeedPage() {
         line-height: ${fonts.lineHeightComfortable}px;
       }
 
-      .no-new-conent {
+      .no-new-content {
         color: ${colors.text};
         font-size: ${fonts.fontSizeP}px;
         font-weight: bold;
@@ -107,7 +114,9 @@ export default function FeedPage() {
     </style>
 
     ${htmlItems}
-  `;
+  `,
+    [htmlItems, colors, fonts, sizes],
+  );
 
   return (
     <>
@@ -156,6 +165,7 @@ export default function FeedPage() {
         <HTMLPagesNav
           name="feed"
           html={html}
+          postLoadScript={postLoadScript}
           actions={{
             top: {
               label: "Nothing",

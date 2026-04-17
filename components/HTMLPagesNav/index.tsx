@@ -1,6 +1,6 @@
 import { useThemeContext } from "@/theme/ThemeProvider";
-import { memo, useCallback, useRef, useState } from "react";
-import { StyleSheet, Dimensions, Animated, View } from "react-native";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { StyleSheet, Dimensions, Animated, View, Text } from "react-native";
 import { WebView, WebViewMessageEvent } from "react-native-webview";
 import {
   getHorizontalNavigationPage,
@@ -16,7 +16,6 @@ import {
 } from "@/types";
 import { PageIndicator } from "./PageIndicator";
 import { getWebViewEvents } from "./webViewEvents";
-import { useFocusEffect } from "expo-router";
 
 type HTMLPaesNavProps = {
   name: string;
@@ -24,6 +23,7 @@ type HTMLPaesNavProps = {
   actions: HTMLPagesNavActions;
   handleLink?: (data: HandleLinkData) => void;
   handleRouterLink?: (data: HandleRouterLinkData) => void;
+  postLoadScript?: string;
 };
 
 export function HTMLPagesNavComponent({
@@ -32,15 +32,19 @@ export function HTMLPagesNavComponent({
   actions,
   handleLink,
   handleRouterLink,
+  postLoadScript,
 }: HTMLPaesNavProps) {
   const webviewRef = useRef<WebView>(null);
   const { width, height } = Dimensions.get("window");
   const { styles, theme } = useStyles(width);
   const [pages, setPages] = useState<Pages>({
+    amount: 0,
+    current: 0,
     scrollLeft: 0,
     isFirst: true,
     isLast: false,
   } as unknown as Pages);
+  const [loadError, setLoadError] = useState(false);
   const { panResponder, pan, labelsOpacity, opacity } = usePanResponder({
     name,
     width,
@@ -48,11 +52,18 @@ export function HTMLPagesNavComponent({
     webviewRef,
   });
 
-  const content = getHorizontalNavigationPage({
-    content: html,
-    width: styles.webView.width,
-    theme,
-  });
+  const content = useMemo(
+    () =>
+      getHorizontalNavigationPage({
+        content: html,
+        width: styles.webView.width,
+        theme,
+      }),
+    [html, styles.webView.width, theme],
+  );
+
+  // Memoize source object so the WebView only reloads when content actually changes.
+  const source = useMemo(() => ({ html: content }), [content]);
 
   const webViewEvents = getWebViewEvents(name);
   const {
@@ -61,6 +72,7 @@ export function HTMLPagesNavComponent({
     SWIPE_TOP,
     SWIPE_BOTTOM,
     ON_LOAD,
+    ON_LOAD_ERROR,
     HANDLE_LINK,
     HANDLE_ROUTER_LINK,
     _CONSOLE_,
@@ -69,11 +81,17 @@ export function HTMLPagesNavComponent({
   const handleScroll = useCallback((scrollLeft: number) => {
     webviewRef.current?.injectJavaScript(`
       document.getElementById("viewport").scrollLeft = ${scrollLeft};
-      true;
+      true; // required by injectJavaScript — the script must evaluate to true
     `);
   }, []);
 
-  useFocusEffect(() => handleScroll(pages.scrollLeft));
+  // Inject postLoadScript whenever it changes (e.g. highlight on navigation back)
+  // without needing the WebView to reload.
+  useEffect(() => {
+    if (postLoadScript) {
+      webviewRef.current?.injectJavaScript(postLoadScript);
+    }
+  }, [postLoadScript]);
 
   // Receives messages from JS inside page content
   const onMessage = (event: WebViewMessageEvent) => {
@@ -140,10 +158,19 @@ export function HTMLPagesNavComponent({
       case SWIPE_BOTTOM:
         return actions.bottom && actions.bottom.action();
       case ON_LOAD: {
-        return handlePages();
+        handlePages();
+        // Safety net: also inject postLoadScript after a reload
+        // (useEffect covers the no-reload case on navigation back)
+        if (postLoadScript) {
+          webviewRef.current?.injectJavaScript(postLoadScript);
+        }
+        return;
       }
+      case ON_LOAD_ERROR:
+        console.error("[HTMLPagesNav]", data.message);
+        setLoadError(true);
+        return;
       case HANDLE_LINK:
-        return handleLink && handleLink(data);
       case HANDLE_ROUTER_LINK:
         return handleRouterLink && handleRouterLink(data);
       case _CONSOLE_:
@@ -184,7 +211,7 @@ export function HTMLPagesNavComponent({
           ref={webviewRef}
           style={[styles.webView, { opacity: pages.amount > 0 ? 1 : 0 }]}
           originWhitelist={["*"]}
-          source={{ html: content }}
+          source={source}
           showsHorizontalScrollIndicator={false}
           showsVerticalScrollIndicator={false}
           scrollEnabled={false}
@@ -192,6 +219,12 @@ export function HTMLPagesNavComponent({
           onMessage={onMessage}
           injectedJavaScript={script(webViewEvents)}
         />
+
+        {loadError && (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>Content could not be rendered.</Text>
+          </View>
+        )}
 
         <PageIndicator pages={pages} />
       </Animated.View>
@@ -201,7 +234,7 @@ export function HTMLPagesNavComponent({
 
 function useStyles(windowWidth: number) {
   const { theme } = useThemeContext();
-  const { sizes, colors } = theme;
+  const { sizes, colors, fonts } = theme;
 
   const webViewWidth = () => {
     const screenWidth = windowWidth - sizes.s1 * 2;
@@ -234,6 +267,18 @@ function useStyles(windowWidth: number) {
       position: "absolute",
       height: "100%",
       width: "100%",
+    },
+    errorContainer: {
+      position: "absolute",
+      height: "100%",
+      width: "100%",
+      justifyContent: "flex-start",
+      alignItems: "flex-start",
+      padding: sizes.s1,
+    },
+    errorText: {
+      color: colors.text,
+      fontSize: fonts.fontSizeP,
     },
   });
 

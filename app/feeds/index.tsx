@@ -1,6 +1,6 @@
 import { Link, Stack, useRouter } from "expo-router";
 import { Pressable, Text, StyleSheet, View } from "react-native";
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { HandleRouterLinkData } from "@/types";
 import { useThemeContext } from "@/theme/ThemeProvider";
 import { HTMLPagesNav } from "@/components/HTMLPagesNav";
@@ -9,6 +9,7 @@ import { usePreviousRoute } from "~/providers/PreviousRoute";
 import { useFeedsContext } from "@/providers/FeedsProvider";
 import { MaterialIcons } from "@expo/vector-icons";
 import { formatLastRefresh } from "~/formatters/timeFormatters";
+import { useWebViewHighlight } from "~/hooks/useWebViewHighlight";
 
 export default function Feeds() {
   const { colors, fonts, sizes, style } = useStyles();
@@ -45,32 +46,41 @@ export default function Feeds() {
   const [resetNavigation, setResetNavigation] = useState(1);
 
   const previousRoute = usePreviousRoute<{ feed_url: string }>();
-  const previousArticleUrl = previousRoute?.params?.feed_url;
+  const previousFeedUrl = previousRoute?.params?.feed_url;
 
-  const getRouteLink = (link: string) => `/feeds/${encodeURIComponent(link)}`;
+  const getRouteLink = useCallback(
+    (link: string) => `/feeds/${encodeURIComponent(link)}`,
+    [],
+  );
+
+  const postLoadScript = useWebViewHighlight(previousFeedUrl, getRouteLink);
 
   const visibleFeeds = feeds?.filter(
     ({ url }) =>
       feedArticleCounts[url] !== undefined && feedArticleCounts[url] > 0,
   );
 
-  const htmlItems =
-    visibleFeeds?.length === 0
-      ? '<div class="no-new-conent"><h3>No content to show.</h3> <p>Swipe down to get updates <br />or add a new feed.</p></div>'
-      : visibleFeeds
-          ?.map(
-            ({ name, url }: any) => `
-            <div 
-              class="item" 
-              data-route-link="${getRouteLink(url)}" 
-            >
-              <h3 class="title">${name}${feedArticleCounts[url] !== undefined ? ` (${feedArticleCounts[url]})` : ""}</h3>
-            </div>
-          `,
-          )
-          .join("");
+  const htmlItems = useMemo(
+    () =>
+      visibleFeeds?.length === 0
+        ? '<div class="no-new-content"><h3>No content to show.</h3> <p>Swipe down to get updates <br />or add a new feed.</p></div>'
+        : visibleFeeds
+            ?.map(
+              ({ name, url }: any) => `
+              <div 
+                class="item" 
+                data-route-link="${getRouteLink(url)}" 
+              >
+                <h3 class="title">${name}${feedArticleCounts[url] !== undefined ? ` (${feedArticleCounts[url]})` : ""}</h3>
+              </div>
+            `,
+            )
+            .join(""),
+    [visibleFeeds, feedArticleCounts, getRouteLink],
+  );
 
-  const html = `
+  const html = useMemo(
+    () => `
     <style>
       .item {
         border-bottom: 1px solid ${colors.borderDark};
@@ -81,8 +91,6 @@ export default function Feeds() {
         break-inside: avoid;
       }
 
-      ${previousArticleUrl ? `.item[data-route-link*="${getRouteLink(previousArticleUrl)}"] { border-bottom-width: 5px; }` : ""}
-
       .title {
         color: ${colors.text};
         font-size: ${fonts.fontSizeH4}px;
@@ -91,7 +99,7 @@ export default function Feeds() {
         margin: 0;
       }
 
-      .no-new-conent {
+      .no-new-content {
         color: ${colors.text};
         font-size: ${fonts.fontSizeP}px;
         font-weight: bold;
@@ -102,7 +110,9 @@ export default function Feeds() {
     </style>
 
     ${htmlItems}
-  `;
+  `,
+    [htmlItems, colors, fonts, sizes],
+  );
 
   return (
     <>
@@ -195,6 +205,7 @@ export default function Feeds() {
           key={resetNavigation}
           name="feed"
           html={html}
+          postLoadScript={postLoadScript}
           actions={{
             top: {
               label: "Refresh All Feeds",

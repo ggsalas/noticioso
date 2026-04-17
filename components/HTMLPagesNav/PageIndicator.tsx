@@ -34,7 +34,7 @@ function useStyles() {
       justifyContent: "flex-end",
       alignItems: "baseline",
       width: "100%",
-      paddingTop: sizes.s1,
+      paddingTop: 0,
       paddingBottom: sizes.s1,
       paddingLeft: sizes.s1,
       paddingRight: sizes.s1,
