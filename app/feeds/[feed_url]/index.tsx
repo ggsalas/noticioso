@@ -31,7 +31,7 @@ export default function FeedPage() {
 
   const htmlItems = useMemo(() => {
     if (content?.length === 0) {
-      return '<div class="no-new-conent">No new content for this feed</div>';
+      return '<div class="no-new-content">No new content for this feed</div>';
     }
     return (
       content
@@ -103,7 +103,7 @@ export default function FeedPage() {
         line-height: ${fonts.lineHeightComfortable}px;
       }
 
-      .no-new-conent {
+      .no-new-content {
         color: ${colors.text};
         font-size: ${fonts.fontSizeP}px;
         font-weight: bold;

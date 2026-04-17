@@ -1,6 +1,6 @@
 import { useThemeContext } from "@/theme/ThemeProvider";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { StyleSheet, Dimensions, Animated, View } from "react-native";
+import { StyleSheet, Dimensions, Animated, View, Text } from "react-native";
 import { WebView, WebViewMessageEvent } from "react-native-webview";
 import {
   getHorizontalNavigationPage,
@@ -44,6 +44,7 @@ export function HTMLPagesNavComponent({
     isFirst: true,
     isLast: false,
   } as unknown as Pages);
+  const [loadError, setLoadError] = useState(false);
   const { panResponder, pan, labelsOpacity, opacity } = usePanResponder({
     name,
     width,
@@ -71,6 +72,7 @@ export function HTMLPagesNavComponent({
     SWIPE_TOP,
     SWIPE_BOTTOM,
     ON_LOAD,
+    ON_LOAD_ERROR,
     HANDLE_LINK,
     HANDLE_ROUTER_LINK,
     _CONSOLE_,
@@ -164,8 +166,11 @@ export function HTMLPagesNavComponent({
         }
         return;
       }
+      case ON_LOAD_ERROR:
+        console.error("[HTMLPagesNav]", data.message);
+        setLoadError(true);
+        return;
       case HANDLE_LINK:
-        return handleLink && handleLink(data);
       case HANDLE_ROUTER_LINK:
         return handleRouterLink && handleRouterLink(data);
       case _CONSOLE_:
@@ -215,6 +220,12 @@ export function HTMLPagesNavComponent({
           injectedJavaScript={script(webViewEvents)}
         />
 
+        {loadError && (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>Content could not be rendered.</Text>
+          </View>
+        )}
+
         <PageIndicator pages={pages} />
       </Animated.View>
     </View>
@@ -223,7 +234,7 @@ export function HTMLPagesNavComponent({
 
 function useStyles(windowWidth: number) {
   const { theme } = useThemeContext();
-  const { sizes, colors } = theme;
+  const { sizes, colors, fonts } = theme;
 
   const webViewWidth = () => {
     const screenWidth = windowWidth - sizes.s1 * 2;
@@ -256,6 +267,18 @@ function useStyles(windowWidth: number) {
       position: "absolute",
       height: "100%",
       width: "100%",
+    },
+    errorContainer: {
+      position: "absolute",
+      height: "100%",
+      width: "100%",
+      justifyContent: "flex-start",
+      alignItems: "flex-start",
+      padding: sizes.s1,
+    },
+    errorText: {
+      color: colors.text,
+      fontSize: fonts.fontSizeP,
     },
   });
 

@@ -63,7 +63,7 @@ export default function Feeds() {
   const htmlItems = useMemo(
     () =>
       visibleFeeds?.length === 0
-        ? '<div class="no-new-conent"><h3>No content to show.</h3> <p>Swipe down to get updates <br />or add a new feed.</p></div>'
+        ? '<div class="no-new-content"><h3>No content to show.</h3> <p>Swipe down to get updates <br />or add a new feed.</p></div>'
         : visibleFeeds
             ?.map(
               ({ name, url }: any) => `
@@ -99,7 +99,7 @@ export default function Feeds() {
         margin: 0;
       }
 
-      .no-new-conent {
+      .no-new-content {
         color: ${colors.text};
         font-size: ${fonts.fontSizeP}px;
         font-weight: bold;
