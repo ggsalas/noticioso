@@ -53,27 +53,75 @@ export class ArticleService {
 
   // Parse HTML into Article
   private parseArticleFromHtml = (html: string): Article => {
-    const { document } = parseHTML(html);
+    const t0 = performance.now();
+    const cleanedHtml = this.stripNonContentHtml(html);
+    console.log(
+      `[ArticleService] stripHtml: ${(performance.now() - t0).toFixed(0)}ms (${(html.length / 1024).toFixed(0)}KB -> ${(cleanedHtml.length / 1024).toFixed(0)}KB)`,
+    );
 
+    const t1 = performance.now();
+    const { document } = parseHTML(cleanedHtml);
+    console.log(
+      `[ArticleService] parseHTML: ${(performance.now() - t1).toFixed(0)}ms`,
+    );
+
+    const t2 = performance.now();
+    this.handleLazyImages(document);
+    this.simplifyImageMarkup(document);
+    console.log(
+      `[ArticleService] image fixes: ${(performance.now() - t2).toFixed(0)}ms`,
+    );
+
+    const t3 = performance.now();
     const article = new Readability(document, {
       nbTopCandidates: 3,
-      charThreshold: 5000,
     });
-
     const extractedContent = article.parse();
-    const contentWithFixedImages = this.handleLazyImages(
-      extractedContent?.content,
+    console.log(
+      `[ArticleService] Readability: ${(performance.now() - t3).toFixed(0)}ms`,
     );
+
     const heroImage = this.extractHeroImage(document);
+    console.log(
+      `[ArticleService] total: ${(performance.now() - t0).toFixed(0)}ms`,
+    );
 
     const data = {
       ...extractedContent,
-      content: contentWithFixedImages,
       heroImage,
     };
 
     return data as Article;
   };
+
+  // Strip non-content HTML before parsing to reduce DOM size
+  private stripNonContentHtml(html: string): string {
+    // Remove tags with content (using [^<] to avoid backtracking)
+    let result = html
+      .replace(/<script[^>]*>(?:[^<]|<(?!\/script>))*<\/script>/gi, "")
+      .replace(/<style[^>]*>(?:[^<]|<(?!\/style>))*<\/style>/gi, "")
+      .replace(/<noscript[^>]*>(?:[^<]|<(?!\/noscript>))*<\/noscript>/gi, "")
+      .replace(/<svg[^>]*>(?:[^<]|<(?!\/svg>))*<\/svg>/gi, "")
+      .replace(/<header[^>]*>(?:[^<]|<(?!\/header>))*<\/header>/gi, "")
+      .replace(/<footer[^>]*>(?:[^<]|<(?!\/footer>))*<\/footer>/gi, "")
+      .replace(/<nav[^>]*>(?:[^<]|<(?!\/nav>))*<\/nav>/gi, "")
+      .replace(/<form[^>]*>(?:[^<]|<(?!\/form>))*<\/form>/gi, "");
+
+    // Remove void/self-closing tags and comments
+    result = result
+      .replace(/<link[^>]*>/gi, "")
+      .replace(/<input[^>]*>/gi, "")
+      .replace(/<!--(?:[^-]|-(?!->))*-->/g, "");
+
+    // Strip heavy attributes that bloat the DOM
+    result = result
+      .replace(/\s+class="[^"]*"/gi, "")
+      .replace(/\s+class='[^']*'/gi, "")
+      .replace(/\s+style="[^"]*"/gi, "")
+      .replace(/\s+data-(?!src|td-src)[a-z-]+="[^"]*"/gi, "");
+
+    return result;
+  }
 
   private extractHeroImage(doc: Document): string | undefined {
     const ogImage = doc
@@ -118,35 +166,70 @@ export class ArticleService {
     return scored[0]?.img?.src;
   }
 
-  private handleLazyImages(content?: string): string | undefined {
-    if (!content) return content;
-
-    const imageList: { originalHtml: string; newHtml: string }[] = [];
-    const { document } = parseHTML(content);
-
-    const populateFixedImages = (selector: string) => {
-      const images = document.querySelectorAll(`img[${selector}]`);
+  private handleLazyImages(doc: Document): void {
+    const fixImages = (selector: string) => {
+      const images = doc.querySelectorAll(`img[${selector}]`);
       images?.forEach((img: Element) => {
-        const newImage = document.createElement("img");
-        Array.from(img.attributes).forEach((attr) => {
-          newImage.setAttribute(attr.name, attr.value);
-        });
-        newImage.setAttribute("src", img.getAttribute(selector) || "");
-        imageList.push({
-          originalHtml: img.outerHTML,
-          newHtml: newImage.outerHTML,
-        });
+        const lazySrc = img.getAttribute(selector);
+        if (lazySrc) {
+          img.setAttribute("src", lazySrc);
+        }
       });
     };
 
-    populateFixedImages("data-td-src-property");
-    populateFixedImages("data-src");
+    fixImages("data-td-src-property");
+    fixImages("data-src");
 
-    imageList.forEach(({ originalHtml, newHtml }) => {
-      content = content?.replace(originalHtml, newHtml);
+    // Handle images with loading="lazy" that may have src in srcset/source
+    const pictures = doc.querySelectorAll("picture");
+    pictures?.forEach((picture: Element) => {
+      const img = picture.querySelector("img");
+      const source = picture.querySelector("source");
+      if (img && source) {
+        const srcset = source.getAttribute("srcset");
+        if (
+          srcset &&
+          (!img.getAttribute("src") || img.getAttribute("loading") === "lazy")
+        ) {
+          const firstSrc = srcset.split(",")[0]?.trim().split(/\s+/)[0];
+          if (firstSrc) {
+            img.setAttribute("src", firstSrc);
+            img.removeAttribute("loading");
+          }
+        }
+      }
+    });
+  }
+
+  // Simplify nested image markup so Readability doesn't discard images
+  // Replaces <picture> with its <img>, and unwraps non-semantic div wrappers
+  // around images so the <img> sits directly inside <figure> or content flow.
+  private simplifyImageMarkup(doc: Document): void {
+    // Replace <picture> elements with their <img> child
+    const pictures = doc.querySelectorAll("picture");
+    pictures?.forEach((picture: Element) => {
+      const img = picture.querySelector("img");
+      if (img) {
+        picture.parentNode?.replaceChild(img, picture);
+      }
     });
 
-    return content;
+    // Unwrap non-semantic divs that only contain an image
+    // e.g. <div class="placeholder"><div class="com-image"><img></div></div>
+    // becomes just <img> in the parent
+    const divs = Array.from(
+      doc.querySelectorAll("figure div, section div"),
+    ) as Element[];
+    // Process deepest divs first so we unwrap from inside out
+    divs.reverse().forEach((div: Element) => {
+      const children = Array.from(div.children);
+      const hasOnlyImageContent =
+        children.length === 1 &&
+        (children[0].tagName === "IMG" || children[0].tagName === "DIV");
+      if (hasOnlyImageContent) {
+        div.parentNode?.replaceChild(children[0], div);
+      }
+    });
   }
 }
 
