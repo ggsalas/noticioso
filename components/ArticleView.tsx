@@ -23,20 +23,6 @@ export function ArticleView({ article_url, actions }: Props) {
     error,
   } = useAsyncFn(articleService.getArticle, article_url);
 
-  const getContent = () => {
-    if (!article) return "";
-    let content = "";
-    content += article.heroImage
-      ? `<img src="${article.heroImage}" class="_hero-image_"></img>`
-      : "";
-    content += `<h1 class="_title_">${article.title}</h1>`;
-    if (article.byline) {
-      content += `<h2 class="_author_">${article.byline}</h2>`;
-    }
-    content += article.content;
-    return content;
-  };
-
   return (
     <>
       <Stack.Screen
@@ -85,7 +71,9 @@ export function ArticleView({ article_url, actions }: Props) {
       {!loading && article && (
         <HTMLPagesNav
           name="article"
-          html={getContent()}
+          html={article.rawHtml}
+          heroImageUrl={article.heroImage}
+          parseArticle
           actions={actions}
           handleLink={({ href }: HandleLinkData) => {
             if (isWebUrl(href)) {

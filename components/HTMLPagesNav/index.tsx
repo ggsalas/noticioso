@@ -24,6 +24,8 @@ type HTMLPaesNavProps = {
   handleLink?: (data: HandleLinkData) => void;
   handleRouterLink?: (data: HandleRouterLinkData) => void;
   postLoadScript?: string;
+  parseArticle?: boolean;
+  heroImageUrl?: string;
 };
 
 export function HTMLPagesNavComponent({
@@ -33,6 +35,8 @@ export function HTMLPagesNavComponent({
   handleLink,
   handleRouterLink,
   postLoadScript,
+  parseArticle,
+  heroImageUrl,
 }: HTMLPaesNavProps) {
   const webviewRef = useRef<WebView>(null);
   const { width, height } = Dimensions.get("window");
@@ -56,10 +60,12 @@ export function HTMLPagesNavComponent({
     () =>
       getHorizontalNavigationPage({
         content: html,
+        parseArticle,
+        heroImageUrl,
         width: styles.webView.width,
         theme,
       }),
-    [html, styles.webView.width, theme],
+    [html, styles.webView.width, theme, heroImageUrl, parseArticle],
   );
 
   // Memoize source object so the WebView only reloads when content actually changes.
@@ -171,6 +177,7 @@ export function HTMLPagesNavComponent({
         setLoadError(true);
         return;
       case HANDLE_LINK:
+        return handleLink && handleLink(data);
       case HANDLE_ROUTER_LINK:
         return handleRouterLink && handleRouterLink(data);
       case _CONSOLE_:
@@ -217,7 +224,7 @@ export function HTMLPagesNavComponent({
           scrollEnabled={false}
           scalesPageToFit={false}
           onMessage={onMessage}
-          injectedJavaScript={script(webViewEvents)}
+          injectedJavaScript={script({ ...webViewEvents, parseArticle })}
         />
 
         {loadError && (
