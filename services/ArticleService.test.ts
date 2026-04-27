@@ -4,6 +4,8 @@ import { articleCacheService } from "./ArticleCacheService";
 describe("ArticleService", () => {
   let service: ArticleService;
   let mockSetHtml: jest.SpyInstance;
+  let mockGetHtml: jest.SpyInstance;
+  let mockGetMetadata: jest.SpyInstance;
   let mockHas: jest.SpyInstance;
   let mockFetch: jest.SpyInstance;
 
@@ -12,22 +14,28 @@ describe("ArticleService", () => {
     service = new ArticleService();
 
     mockSetHtml = jest.spyOn(articleCacheService, "setHtml");
+    mockGetHtml = jest.spyOn(articleCacheService, "getHtml");
+    mockGetMetadata = jest.spyOn(articleCacheService, "getMetadata");
     mockHas = jest.spyOn(articleCacheService, "has");
     mockFetch = jest.spyOn(global, "fetch");
   });
 
   afterEach(() => {
     mockSetHtml.mockRestore();
+    mockGetHtml.mockRestore();
+    mockGetMetadata.mockRestore();
     mockHas.mockRestore();
     mockFetch.mockRestore();
   });
 
   describe("getArticle", () => {
-    it("should fetch, save metadata, and parse article", async () => {
+    it("should fetch, cache, and return article data with metadata", async () => {
       const mockHtml = `
         <html>
           <head>
             <meta property="og:title" content="Test Article">
+            <meta property="og:image" content="https://example.com/image.jpg">
+            <meta property="og:site_name" content="Example Site">
           </head>
           <body>
             <article>Content</article>
@@ -35,11 +43,18 @@ describe("ArticleService", () => {
         </html>
       `;
 
+      mockGetHtml.mockResolvedValueOnce(null);
       mockFetch.mockResolvedValueOnce({
         ok: true,
         text: () => Promise.resolve(mockHtml),
       });
       mockSetHtml.mockResolvedValueOnce(undefined);
+      mockGetMetadata.mockResolvedValueOnce({
+        title: "Test Article",
+        heroImage: "https://example.com/image.jpg",
+        byline: "",
+        excerpt: "",
+      });
 
       const result = await service.getArticle("https://example.com/article");
 
@@ -50,9 +65,30 @@ describe("ArticleService", () => {
       );
       expect(result).toBeDefined();
       expect(result.title).toBe("Test Article");
+      expect(result.heroImage).toBe("https://example.com/image.jpg");
+      expect(result.siteName).toBe("Example Site");
+      expect(result.rawHtml).toBeDefined();
+    });
+
+    it("should use cached HTML when available", async () => {
+      const mockHtml = `<html><head><meta property="og:site_name" content="Cached"></head><body>Cached</body></html>`;
+
+      mockGetHtml.mockResolvedValueOnce(mockHtml);
+      mockGetMetadata.mockResolvedValueOnce({
+        title: "Cached Article",
+        heroImage: undefined,
+        byline: "",
+        excerpt: "",
+      });
+
+      const result = await service.getArticle("https://example.com/cached");
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(result.title).toBe("Cached Article");
     });
 
     it("should throw error on failed fetch", async () => {
+      mockGetHtml.mockResolvedValueOnce(null);
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 404,
@@ -77,7 +113,7 @@ describe("ArticleService", () => {
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    it("should fetch and save metadata on cache miss", async () => {
+    it("should fetch and save on cache miss", async () => {
       mockHas.mockResolvedValueOnce(false);
 
       const mockHtml = "<html><head></head><body>Content</body></html>";
