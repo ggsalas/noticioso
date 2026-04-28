@@ -11,21 +11,23 @@ if (!fs.existsSync(GRADLE_FILE)) {
 
 let content = fs.readFileSync(GRADLE_FILE, 'utf8');
 
-// Check if already configured
-if (content.includes('applicationIdSuffix ".debug"')) {
-  console.log('Android already configured for debug build');
-  process.exit(0);
+const suffix = 'applicationIdSuffix ".debug"';
+const appName = 'resValue "string", "app_name", "NoticiosoDEV"';
+
+function addToBuildType(source, type) {
+  const pattern = new RegExp(`(\\b${type}\\s*\\{)(\\n)`);
+  if (source.match(pattern) && !source.match(new RegExp(`${type}\\s*\\{[^}]*applicationIdSuffix`))) {
+    source = source.replace(pattern, `$1\n            ${suffix}\n            ${appName}$2`);
+    console.log(`  - Added suffix to ${type} build type`);
+  }
+  return source;
 }
 
-// Find the debug block and add the config inside it
-// Pattern: find "debug {" and add lines after the opening brace
-content = content.replace(
-  /(\n    buildTypes \{\n        debug \{)(\n)/,
-  '$1\n            applicationIdSuffix ".debug"\n            resValue "string", "app_name", "NoticiosoDEV"$2'
-);
+content = addToBuildType(content, 'debug');
+content = addToBuildType(content, 'release');
 
 fs.writeFileSync(GRADLE_FILE, content);
 
-console.log('Android configured for debug build');
+console.log('Android configured for local development:');
 console.log('  - Package: com.ggsalas.noticiosoandroid.debug');
 console.log('  - App name: NoticiosoDEV');

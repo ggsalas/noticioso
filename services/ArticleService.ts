@@ -1,5 +1,4 @@
 import { articleCacheService } from "./ArticleCacheService";
-import type { ArticleHtmlCacheEntry } from "~/types";
 
 export type ArticleData = {
   rawHtml: string;
@@ -23,7 +22,7 @@ export class ArticleService {
     const metadata = await articleCacheService.getMetadata(url);
 
     return {
-      rawHtml: this.stripNonContentHtml(html),
+      rawHtml: html,
       heroImage: metadata?.heroImage,
       title: metadata?.title,
       byline: metadata?.byline,
@@ -70,32 +69,6 @@ export class ArticleService {
       /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:site_name["']/i,
     );
     return match2?.[1];
-  }
-
-  // Strip non-content HTML before sending to WebView to reduce size
-  private stripNonContentHtml(html: string): string {
-    let result = html
-      .replace(/<script[^>]*>(?:[^<]|<(?!\/script>))*<\/script>/gi, "")
-      .replace(/<style[^>]*>(?:[^<]|<(?!\/style>))*<\/style>/gi, "")
-      .replace(/<noscript[^>]*>(?:[^<]|<(?!\/noscript>))*<\/noscript>/gi, "")
-      .replace(/<svg[^>]*>(?:[^<]|<(?!\/svg>))*<\/svg>/gi, "")
-      .replace(/<header[^>]*>(?:[^<]|<(?!\/header>))*<\/header>/gi, "")
-      .replace(/<footer[^>]*>(?:[^<]|<(?!\/footer>))*<\/footer>/gi, "")
-      .replace(/<nav[^>]*>(?:[^<]|<(?!\/nav>))*<\/nav>/gi, "")
-      .replace(/<form[^>]*>(?:[^<]|<(?!\/form>))*<\/form>/gi, "");
-
-    result = result
-      .replace(/<link[^>]*>/gi, "")
-      .replace(/<input[^>]*>/gi, "")
-      .replace(/<!--(?:[^-]|-(?!->))*-->/g, "");
-
-    result = result
-      .replace(/\s+class="[^"]*"/gi, "")
-      .replace(/\s+class='[^']*'/gi, "")
-      .replace(/\s+style="[^"]*"/gi, "")
-      .replace(/\s+data-(?!src|td-src)[a-z-]+="[^"]*"/gi, "");
-
-    return result;
   }
 }
 
