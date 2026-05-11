@@ -62,3 +62,11 @@ services/
   - expo-file-system: Uses new File/Directory/Paths API instead of namespace exports
   - @react-navigation/native: Theme type requires `fonts` property
   - InteractionManager: Deprecated in React Native, use setTimeout instead
+
+## WebView HTML Embedding
+
+- Raw HTML is embedded inside a `<script id="raw-html" type="text/json">` tag in the WebView page
+- The HTML is **base64 encoded** before embedding because raw HTML can contain `</script>` which breaks the container tag
+- We already tried escaping with `content.replace(/<\/script/gi, '<\\/script')` and it did NOT work — articles rendered blank
+- An alternative to base64 would be stripping `<script>` tags from the HTML before embedding, but base64 is more robust
+- The encoding is done in `lib/horizontalNavigation/index.js` and decoded in `lib/articleParser.js`
