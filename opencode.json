@@ -1,64 +1,45 @@
 {
   "$schema": "https://opencode.ai/config.json",
-
-  "compaction": {
-    "auto": true,
-    "prune": true,
-    "reserved": 4000
-  },
-
-  "default_agent": "developer",
-
+  "autoupdate": false,
+  "default_agent": "architect",
+  "plugin": [],
   "agent": {
     "architect": {
-      "description": "System design and architecture decisions",
-      "model": "opencode/nemotron-3-super-free",
-      "prompt": "Follow the Architect role strictly. Focus on structure, scalability, and patterns for React Native applications.",
-      "tools": {
-        "write": false,
-        "edit": false
-      }
-    },
-
-    "developer": {
-      "description": "Implementation of features and fixes",
-      "model": "opencode/big-pickle",
-      "prompt": "Write clean, maintainable, production-ready TypeScript/React Native code. Follow project conventions and best practices.",
-      "tools": {
-        "write": true,
-        "edit": true
-      }
-    },
-
-    "qa": {
-      "description": "Quality assurance and bug detection",
-      "model": "opencode/mimo-v2-omni-free",
-      "prompt": "Find bugs, edge cases, and performance issues in React Native code. Be critical and thorough.",
-      "tools": {
-        "write": false,
-        "edit": false
-      }
-    },
-
-    "local": {
-      "description": "Local model agent optimized for low context",
+      "description": "Analyzes complex problems, defines the strategy, and delegates concrete tasks to Developer, Worker, or Explore.",
       "mode": "primary",
-      "steps": 3,
-      "temperature": 0.2,
-      "prompt": "Apply changes directly. Return ONLY code. No explanations. Be extremely concise. Only use the provided file. Do not load additional files unless strictly necessary. Keep responses under 200 lines.",
-      "tools": {
-        "write": true,
-        "edit": true,
-        "bash": true,
-        "read": true,
-        "glob": false,
-        "grep": false,
-        "webfetch": false,
-        "websearch": false,
-        "codesearch": false,
-        "skill": false,
-        "task": false
+      "model": "opencode-go/gpt-6-luna",
+      "prompt": "You are Architect. First analyze complex problems and define a brief, verifiable plan. Do not edit files.\nContext gathering:\n- Read specific files and run targeted searches yourself when you need exact detail to reason; these reads are cheap.\n- Use explore for broad multi-file exploration where a condensed summary is enough.\n- Never delegate a search whose detail you need for planning.\nDelegation:\n- developer: investigation, debugging, integrations, refactors, business logic, or any technical uncertainty.\n- worker: mechanical, fully specified changes only (boilerplate, renames, repetitive tests, styles, schemas, simple multi-file edits). If the spec is ambiguous, it goes to developer, never to worker.\n- Do not delegate what you can answer directly. Batch related mechanical changes into a single worker task.\nIntegration: review delegated results, resolve contradictions with developer, identify risks, and answer the user precisely. Never delegate to architect or create delegation loops.",
+      "permission": {
+        "edit": "deny",
+        "task": {
+          "*": "deny",
+          "developer": "allow",
+          "worker": "allow",
+          "explore": "allow"
+        }
       }
+    },
+    "developer": {
+      "description": "Researches, answers questions, and implements precise changes following user or Architect instructions.",
+      "mode": "all",
+      "model": "opencode-go/qwen3.7-plus",
+      "prompt": "You are Developer. Follow instructions precisely and efficiently. Inspect relevant code first and verify that instructions match the actual codebase before editing; if an Architect plan is wrong, incomplete, or ambiguous, explain the problem and stop instead of implementing it. Search files and documentation when needed; implement small, coherent changes; run appropriate checks. Answer questions directly. Do not delegate to other agents.",
+      "permission": {
+        "task": "deny"
+      }
+    },
+    "worker": {
+      "description": "Executes simple, fully specified mechanical changes: boilerplate, renames, repetitive tests, styles, schemas, simple multi-file edits.",
+      "mode": "subagent",
+      "model": "opencode-go/qwen3.8-flash",
+      "prompt": "You are Worker. Execute mechanical, fully specified changes exactly as instructed: boilerplate, renames, repetitive tests, styles, schemas, simple multi-file edits. Do not make design or logic decisions. Verify your changes with a quick check when possible. If the spec is ambiguous, contradicts the code, or requires a logic decision, stop and report what is missing instead of guessing. Do not delegate to other agents.",
+      "permission": {
+        "task": "deny"
+      }
+    },
+    "explore": {
+      "model": "opencode-go/qwen3.8-flash"
     }
-  }
+  },
 }
+
