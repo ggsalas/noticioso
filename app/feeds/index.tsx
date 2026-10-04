@@ -1,5 +1,5 @@
 import { Link, Stack, useRouter } from "expo-router";
-import { Pressable, Text, StyleSheet, View } from "react-native";
+import { Pressable, Text, StyleSheet, View, ActivityIndicator } from "react-native";
 import { useCallback, useMemo, useState } from "react";
 import { HandleRouterLinkData } from "@/types";
 import { useThemeContext } from "@/theme/ThemeProvider";
@@ -10,6 +10,7 @@ import { useFeedsContext } from "@/providers/FeedsProvider";
 import { MaterialIcons } from "@expo/vector-icons";
 import { formatLastRefresh } from "~/formatters/timeFormatters";
 import { useWebViewHighlight } from "~/hooks/useWebViewHighlight";
+import FeedRefreshModule from "@/modules/FeedRefreshModule";
 
 export default function Feeds() {
   const { colors, fonts, sizes, style } = useStyles();
@@ -44,6 +45,23 @@ export default function Feeds() {
   const loadingStatus = loading || updating;
   const router = useRouter();
   const [resetNavigation, setResetNavigation] = useState(1);
+  const [nativeRefreshResult, setNativeRefreshResult] = useState<string | null>(null);
+  const [nativeRefreshRunning, setNativeRefreshRunning] = useState(false);
+
+  const handleNativeRefresh = useCallback(async () => {
+    if (nativeRefreshRunning || !feeds) return;
+    setNativeRefreshRunning(true);
+    setNativeRefreshResult(null);
+    try {
+      const feedUrls = feeds.map((f: { url: string }) => f.url);
+      const result = await FeedRefreshModule.refreshFeeds(feedUrls);
+      setNativeRefreshResult(result);
+    } catch (e: any) {
+      setNativeRefreshResult(`Error: ${e?.message ?? e}`);
+    } finally {
+      setNativeRefreshRunning(false);
+    }
+  }, [feeds, nativeRefreshRunning]);
 
   const previousRoute = usePreviousRoute<{ feed_url: string }>();
   const previousFeedUrl = previousRoute?.params?.feed_url;
@@ -139,18 +157,36 @@ export default function Feeds() {
             </View>
           ),
           headerRight: () => (
-            <Link href="/config/feedList" asChild>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: sizes.s1 }}>
               <Pressable
-                style={style.rightButton}
+                style={[style.rightButton, nativeRefreshRunning && { opacity: 0.5 }]}
                 android_ripple={{ color: colors.textGrey, borderless: true }}
+                onPress={handleNativeRefresh}
+                disabled={nativeRefreshRunning}
               >
-                <MaterialIcons
-                  name="settings"
-                  size={sizes.s1}
-                  color={colors.text}
-                />
+                {nativeRefreshRunning ? (
+                  <ActivityIndicator size="small" color={colors.text} />
+                ) : (
+                  <MaterialIcons
+                    name="refresh"
+                    size={sizes.s1}
+                    color={colors.text}
+                  />
+                )}
               </Pressable>
-            </Link>
+              <Link href="/config/feedList" asChild>
+                <Pressable
+                  style={style.rightButton}
+                  android_ripple={{ color: colors.textGrey, borderless: true }}
+                >
+                  <MaterialIcons
+                    name="settings"
+                    size={sizes.s1}
+                    color={colors.text}
+                  />
+                </Pressable>
+              </Link>
+            </View>
           ),
         }}
       />
@@ -164,6 +200,20 @@ export default function Feeds() {
       {loadingStatus && (
         <Text style={{ color: colors.text, padding: sizes.s1 }}>
           {getStatusLabel(loadingStatus)}
+        </Text>
+      )}
+
+      {nativeRefreshResult && (
+        <Text
+          style={{
+            color: nativeRefreshResult.startsWith("Error")
+              ? "#ff4444"
+              : colors.text,
+            padding: sizes.s1,
+            fontWeight: "bold",
+          }}
+        >
+          Native refresh: {nativeRefreshResult}
         </Text>
       )}
 

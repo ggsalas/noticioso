@@ -23,5 +23,20 @@ expo-env.d.ts
 # @end expo-cli
 
 # Expo managed workflow - generated native directories
-android/
-ios/
+# Root-anchored on purpose: bare `android/` would also hide hand-written native
+# sources inside local Expo modules (e.g. modules/FeedRefreshModule/android).
+/android/
+/ios/
+
+# Gradle build outputs for hand-written local Expo module native sources.
+# Anchored so only the generated build/ directories are ignored; the module's
+# tracked android sources (modules/*/android/build.gradle, android/src/**) are
+# unaffected.
+/modules/*/android/build/
+
+# Local Android SDK artifacts - machine-specific, never committed
+/.sdk/
+/build-tools/
+/licenses/
+/platform-tools/
+/platforms/
