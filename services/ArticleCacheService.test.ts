@@ -1,14 +1,19 @@
 import { ArticleCacheService } from "./ArticleCacheService";
-import { StorageService } from "./StorageService";
+import { ArticleCacheRepository } from "../infrastructure/ArticleCacheRepository";
 
-const mockStorage = {
-  getItem: jest.fn(),
-  setItem: jest.fn(),
-  removeItem: jest.fn(),
+const mockRepository = {
+  has: jest.fn(),
+  getMetadata: jest.fn(),
+  setMetadata: jest.fn(),
+  updateLastAccessed: jest.fn(),
+  delete: jest.fn(),
+  count: jest.fn(),
+  getOldestNeverAccessed: jest.fn(),
+  getOldestByLastAccessed: jest.fn(),
 };
 
 const articleCacheService = new ArticleCacheService(
-  mockStorage as unknown as StorageService,
+  mockRepository as unknown as ArticleCacheRepository,
 );
 
 describe("ArticleCacheService", () => {
@@ -18,26 +23,20 @@ describe("ArticleCacheService", () => {
 
   describe("has", () => {
     it("should return false for non-existent article", async () => {
-      mockStorage.getItem.mockResolvedValueOnce(null);
+      mockRepository.has.mockResolvedValueOnce(false);
 
       const result = await articleCacheService.has(
         "https://example.com/not-found",
       );
 
-      expect(mockStorage.getItem).toHaveBeenCalledWith(
-        "@noticioso-articleHtmlCache-https://example.com/not-found",
+      expect(mockRepository.has).toHaveBeenCalledWith(
+        "https://example.com/not-found",
       );
       expect(result).toBe(false);
     });
 
     it("should return true for existing article", async () => {
-      const mockEntry = {
-        html: "", // Full HTML now in file system
-        fetchedAt: new Date().toISOString(),
-        lastAccessedAt: new Date().toISOString(),
-      };
-
-      mockStorage.getItem.mockResolvedValueOnce(mockEntry);
+      mockRepository.has.mockResolvedValueOnce(true);
 
       const result = await articleCacheService.has(
         "https://example.com/article",
@@ -49,7 +48,7 @@ describe("ArticleCacheService", () => {
 
   describe("getMetadata", () => {
     it("should return null for non-existent article", async () => {
-      mockStorage.getItem.mockResolvedValueOnce(null);
+      mockRepository.getMetadata.mockResolvedValueOnce(null);
 
       const result = await articleCacheService.getMetadata(
         "https://example.com/not-found",
@@ -58,34 +57,26 @@ describe("ArticleCacheService", () => {
       expect(result).toBeNull();
     });
 
-    it("should return metadata from JSON entry", async () => {
-      const mockEntry = {
+    it("should return metadata from repository", async () => {
+      const mockMetadata = {
         heroImage: "https://example.com/image.jpg",
         byline: "John Doe",
         title: "Test Title",
         excerpt: "Test excerpt",
-        html: "", // Now stored as empty, full HTML is in file system
-        fetchedAt: new Date().toISOString(),
-        lastAccessedAt: new Date().toISOString(),
       };
 
-      mockStorage.getItem.mockResolvedValueOnce(mockEntry);
+      mockRepository.getMetadata.mockResolvedValueOnce(mockMetadata);
 
       const result = await articleCacheService.getMetadata(
         "https://example.com/article",
       );
 
-      expect(result).toEqual({
-        heroImage: "https://example.com/image.jpg",
-        byline: "John Doe",
-        title: "Test Title",
-        excerpt: "Test excerpt",
-      });
+      expect(result).toEqual(mockMetadata);
     });
   });
 
   describe("setHtml", () => {
-    it("should extract metadata and save to storage", async () => {
+    it("should extract metadata and save to repository", async () => {
       const mockHtml = `
         <html>
           <head>
@@ -97,14 +88,14 @@ describe("ArticleCacheService", () => {
         </html>
       `;
 
-      mockStorage.getItem.mockResolvedValueOnce({}); // getIndex returns empty
-      mockStorage.setItem.mockResolvedValue(undefined);
+      mockRepository.count.mockResolvedValue(0);
+      mockRepository.setMetadata.mockResolvedValue(undefined);
 
       await articleCacheService.setHtml("https://example.com/new", mockHtml);
 
-      // Should save metadata (html stored in file system, not in storage entry)
-      expect(mockStorage.setItem).toHaveBeenCalledWith(
-        "@noticioso-articleHtmlCache-https://example.com/new",
+      // Should save metadata to repository
+      expect(mockRepository.setMetadata).toHaveBeenCalledWith(
+        "https://example.com/new",
         expect.objectContaining({
           heroImage: "https://example.com/og-image.jpg",
           byline: "Test Author",

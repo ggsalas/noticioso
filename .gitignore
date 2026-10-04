@@ -40,3 +40,6 @@ expo-env.d.ts
 /licenses/
 /platform-tools/
 /platforms/
+
+# SQLite snapshots pulled off a device by scripts/pull-android-db.js
+/.local-db/

@@ -1,5 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { AsyncStorageStatic } from "@react-native-async-storage/async-storage";
+import { feedCacheRepository } from "@/infrastructure/FeedCacheRepository";
+import { articleCacheRepository } from "@/infrastructure/ArticleCacheRepository";
+import { lastRefreshRepository } from "@/infrastructure/LastRefreshRepository";
+import { articleCacheService } from "./ArticleCacheService";
 
 export class StorageService {
   constructor(private asyncStorage: AsyncStorageStatic) {}
@@ -52,24 +56,22 @@ export class StorageService {
   }
 
   // Clear only app-specific caches (keeps user data like feeds list)
+  // Stage 1: Clears SQLite cache tables and HTML files, preserves legacy AsyncStorage backup keys
+  // Note: data_migrations table is NOT cleared - migration marker persists to prevent reimport
   async clearCaches(): Promise<void> {
     try {
-      const allKeys = await this.asyncStorage.getAllKeys();
-      const cacheKeys = [
-        "@noticioso-feedCache-",
-        "@noticioso-articleHtmlCache-",
-        "@noticioso-articleHtmlCache-index",
-        "@noticioso-lastFullRefresh",
-        "@noticioso-article-ranking",
-      ];
+      // Clear SQLite cache tables (data_migrations table is preserved)
+      await feedCacheRepository.clear();
+      await articleCacheRepository.clear();
+      await lastRefreshRepository.clear();
 
-      const keysToRemove = allKeys.filter((key) =>
-        cacheKeys.some((cacheKey) => key.includes(cacheKey)),
-      );
+      // Clear HTML files from filesystem
+      await articleCacheService.clearFileCache();
 
-      if (keysToRemove.length > 0) {
-        await this.asyncStorage.multiRemove(keysToRemove);
-      }
+      // Note: Legacy AsyncStorage backup keys are preserved during Stage 1
+      // data_migrations table is preserved to prevent reimport on next launch
+      // @noticioso-feedList remains untouched (user data)
+      // @noticioso-article-ranking remains untouched (transient, not migrated)
     } catch (error) {
       throw new Error(`Failed to clear caches: ${error}`);
     }

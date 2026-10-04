@@ -1,8 +1,10 @@
-import { storageService, StorageService } from "./StorageService";
+import {
+  feedCacheRepository,
+  lastRefreshRepository,
+  FeedCacheRepository,
+  LastRefreshRepository,
+} from "@/infrastructure";
 import type { FeedData } from "~/types";
-
-const CACHE_KEY_PREFIX = "@noticioso-feedCache-";
-export const LAST_FULL_REFRESH_KEY = "@noticioso-lastFullRefresh";
 
 export type FeedCache = {
   data: FeedData;
@@ -10,37 +12,38 @@ export type FeedCache = {
 };
 
 export class FeedCacheService {
-  constructor(private storage: StorageService) {}
+  constructor(
+    private feedCacheRepo: FeedCacheRepository,
+    private lastRefreshRepo: LastRefreshRepository
+  ) {}
 
   get = async (url: string): Promise<FeedCache | null> => {
-    return this.storage.getItem<FeedCache>(this.cacheKey(url));
+    return this.feedCacheRepo.get(url);
   };
 
   set = async (url: string, data: FeedData): Promise<void> => {
     try {
-      const entry: FeedCache = { data, cachedAt: new Date().toISOString() };
-      await this.storage.setItem(this.cacheKey(url), entry);
+      await this.feedCacheRepo.set(url, data);
     } catch (error) {
-      // Cache is optional - don't fail if storage is full
+      // Cache is optional - don't fail if storage fails
       console.warn("Failed to cache feed:", url, error);
     }
   };
 
   delete = async (url: string): Promise<void> => {
-    await this.storage.removeItem(this.cacheKey(url));
+    await this.feedCacheRepo.delete(url);
   };
 
   getLastFullRefresh = async (): Promise<string | null> => {
-    return this.storage.getItem<string>(LAST_FULL_REFRESH_KEY);
+    return this.lastRefreshRepo.get();
   };
 
   setLastFullRefresh = async (timestamp: string): Promise<void> => {
-    await this.storage.setItem(LAST_FULL_REFRESH_KEY, timestamp);
+    await this.lastRefreshRepo.set(timestamp);
   };
-
-  private cacheKey(url: string): string {
-    return `${CACHE_KEY_PREFIX}${url}`;
-  }
 }
 
-export const feedCacheService = new FeedCacheService(storageService);
+export const feedCacheService = new FeedCacheService(
+  feedCacheRepository,
+  lastRefreshRepository
+);

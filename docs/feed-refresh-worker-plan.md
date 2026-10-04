@@ -342,3 +342,101 @@ al iniciar la fase 1.**
    cuando una feed falla en la nueva generación (mantener snapshot anterior de esa
    feed, mostrarla vacía, u otra) — pendiente, solo si hace falta decidirlo para
    fase 3.
+
+---
+
+## 9. Addendum (2026-10-04) — Arquitectura cerrada y etapas con aprobación manual
+
+**Alcance de este addendum:** a partir de hoy **sustituye las fases técnicas de la
+sección 4 y las decisiones pendientes de la sección 8**. El texto original se
+conserva íntegro y no se reescribe historia: queda como referencia del proceso. Lo
+que sigue es el plan de ejecución vigente. Cualquier punto de la sección 8 no
+resuelto aquí se acuerda con el usuario al llegar la etapa correspondiente; **no se
+inventa**.
+
+### 9.1 Arquitectura acordada
+
+- `@noticioso-feedList` (`FEEDS_LIST_KEY`, `services/FeedService.ts`) **se queda en
+  AsyncStorage**: no pasa a SQLite y ninguna etapa lo migra.
+- **SQLite es la fuente canónica** para: estado del refresh, **snapshots de feeds**,
+  **items por feed**, **metadata de artículos** y **estado de descarga**.
+- El **HTML de artículos permanece en filesystem** (`expo-file-system`, como hoy).
+  No pasa a SQLite.
+- El **article ranking NO forma parte del esquema final** (hoy vive en
+  `@noticioso-article-ranking`, `services/ArticleRankingService.ts`): el esquema
+  final de SQLite no le añade tabla ni columna.
+- Nuevo directorio **`infrastructure/`**: apertura de la DB, migraciones,
+  repositories y **adaptadores de storage/filesystem/nativo**. Los **services**
+  (`services/`) quedan para **orquestar la lógica de negocio**.
+- Orden al iniciar: **las migraciones JS corren antes que los consumidores de la
+  app y antes que el worker nativo**; el nativo, más tarde, **abre el mismo archivo
+  SQLite**.
+
+### 9.2 Etapas (cada una gateada por pruebas y aprobación manual del usuario)
+
+Regla transversal: no se pasa a la siguiente etapa sin **pruebas (automatizadas
+donde apliquen + manuales) y aprobación explícita del usuario**.
+
+#### Etapa 1 — AHORA: infraestructura SQLite + migración idempotente, flujo intacto
+
+- Crear `infrastructure/` (DB, apertura, migraciones, repositories) y migrar a
+  SQLite de forma **idempotente**: los **snapshots del feed cache**
+  (`@noticioso-feedCache-*`), el **timestamp del último refresh**
+  (`@noticioso-lastFullRefresh`) y la **metadata/índice de artículos**
+  (`@noticioso-articleHtmlCache-index`).
+- **La clave `@noticioso-feedList` queda intocada.**
+- Las **claves originales de AsyncStorage** de lo migrado se **conservan como
+  respaldo** hasta que el **usuario valide manualmente**.
+- **El flujo visible al usuario es exactamente el actual**, incluida la
+  **precarga automática de los top 5**, que se mantiene igual por paridad.
+- **Ningún cambio de worker de artículos** en esta etapa.
+- **Puerta de salida:** pruebas + **aprobación manual del usuario** antes de la
+  Etapa 2.
+
+#### Etapa 2 — Fetch + parseo nativo (Kotlin), apply transaccional por toast
+
+- **Solo fetch + parseo de feeds en Kotlin** (nativo, Android).
+- Se guardan en SQLite el **estado de refresh pendiente** y los **status de
+  éxito/fallo por feed**.
+- El **refresh activo permanece visible hasta que el toast existente es tocado**;
+  entonces **una transacción SQLite conmuta el puntero activo**.
+- En esta etapa se **desactiva la precarga automática de los top 5**, y se
+  **preserva la carga on-demand de artículos en JS** (`ArticleService`).
+- **Freshness de feeds: una hora** (una feed está vencida pasado 1 h).
+- **Puerta de salida:** prueba manual + **aprobación del usuario** antes de la
+  Etapa 3.
+
+#### Etapa 3 — Descargador nativo de artículos
+
+- El descargador nativo de artículos **arranca después del refresh de feeds,
+  independientemente del toast** (no espera al apply).
+- Nativo y JS **comparten** la **metadata en SQLite y el HTML en filesystem**: el
+  nativo **verifica fila + archivo** antes de descargar; escribe con **temporal +
+  rename atómico**; y **notifica la finalización feed a feed**.
+- El **on-demand de JS comparte** esa caché y **se deduplica por URL** con el
+  trabajo nativo.
+- **Todavía no hay UI ni clave de estado de completitud** del caché.
+- **Puerta de salida:** prueba manual + **aprobación del usuario** antes de la
+  Etapa 4.
+
+#### Etapa 4 — GC consciente de referencias; fuera límite de 300 y LRU
+
+- **GC de huérfanos consciente de referencias, después del apply.**
+- Se **elimina el límite actual de 300 artículos y su LRU** (`MAX_ARTICLES`,
+  `services/ArticleCacheService.ts`).
+- Se **borran metadata y HTML solo si la URL no está referenciada** por los
+  **snapshots de feed actuales o retenidos**, ni por **trabajos activos**.
+- **Confirmado por el usuario:** los artículos cacheados **sin referencia** (p. ej.
+  los de la ruta `shared/[article_url]`) **no requieren retención**; **se vuelven a
+  descargar on-demand** cuando el usuario los abra.
+- **Puerta de salida:** prueba manual + **aprobación del usuario**.
+
+### 9.3 Aplazados y cleanup
+
+- El **status de completitud del feed cache queda aplazado**: podrá **derivarse más
+  adelante** a partir de los datos ya guardados.
+- Los **fallos de fetch por feed se almacenan desde ya** (Etapa 2) en SQLite, pero
+  **sin UI todavía**.
+- Los **orígenes de caché en AsyncStorage** migrados en la Etapa 1 **se conservan
+  durante la validación de esa etapa**; la **limpieza ocurre solo con aprobación
+  explícita del usuario**.
