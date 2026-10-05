@@ -116,7 +116,8 @@ export class FeedService {
     return results;
   };
 
-  // Orchestras: fetchAllFeeds -> setRanking -> preloadFeedItems
+  // Orchestras: fetchAllFeeds -> setRanking
+  // Stage 2: Top-5 article preloader is DISABLED (will be re-enabled in Stage 3 with native downloader)
   fetchAndCacheAllFeedsRanked = async (
     onProgress?: (
       name: "FETCHING" | "PRELOADING",
@@ -138,16 +139,13 @@ export class FeedService {
       }
     }
 
-    // 2. Apply ranking and get scoreMap
+    // 2. Apply ranking and get scoreMap (for backward compatibility)
     const { scoreMap } = await this.ranking.setRanking(feedsData);
 
-    // 3. Filter articles with score >= 9 (only top 5 of each feed with score 10)
-    const itemsToPreload = this.ranking.filterByScore(feedsData, scoreMap, 9);
-
-    // 4. Preload selected articles
-    await this.preloader.preloadFeedItems(itemsToPreload, (current, total) =>
-      onProgress?.("PRELOADING", current, total),
-    );
+    // Stage 2: SKIP preload step (top-5 automatic article download)
+    // This will be re-enabled in Stage 3 with the native article downloader
+    // The ranking is still computed for backward compatibility but not used for preloading
+    void scoreMap; // Mark as intentionally unused
   };
 
   getFeeds = async (_?: undefined): Promise<Feed[] | undefined> => {

@@ -10,7 +10,6 @@ import { useFeedsContext } from "@/providers/FeedsProvider";
 import { MaterialIcons } from "@expo/vector-icons";
 import { formatLastRefresh } from "~/formatters/timeFormatters";
 import { useWebViewHighlight } from "~/hooks/useWebViewHighlight";
-import FeedRefreshModule from "@/modules/FeedRefreshModule";
 
 export default function Feeds() {
   const { colors, fonts, sizes, style } = useStyles();
@@ -35,33 +34,18 @@ export default function Feeds() {
     switch (status.name) {
       case "FETCHING":
         return `Fetching feeds ${status.current} of ${status.total}`;
-      case "PRELOADING":
-        return `Preloading articles ${status.current} of ${status.total}`;
       default:
         return "Loading...";
     }
   };
 
-  const loadingStatus = loading || updating;
   const router = useRouter();
   const [resetNavigation, setResetNavigation] = useState(1);
-  const [nativeRefreshResult, setNativeRefreshResult] = useState<string | null>(null);
-  const [nativeRefreshRunning, setNativeRefreshRunning] = useState(false);
 
   const handleNativeRefresh = useCallback(async () => {
-    if (nativeRefreshRunning || !feeds) return;
-    setNativeRefreshRunning(true);
-    setNativeRefreshResult(null);
-    try {
-      const feedUrls = feeds.map((f: { url: string }) => f.url);
-      const result = await FeedRefreshModule.refreshFeeds(feedUrls);
-      setNativeRefreshResult(result);
-    } catch (e: any) {
-      setNativeRefreshResult(`Error: ${e?.message ?? e}`);
-    } finally {
-      setNativeRefreshRunning(false);
-    }
-  }, [feeds, nativeRefreshRunning]);
+    if (updating) return;
+    await refreshAllFeeds();
+  }, [updating, refreshAllFeeds]);
 
   const previousRoute = usePreviousRoute<{ feed_url: string }>();
   const previousFeedUrl = previousRoute?.params?.feed_url;
@@ -159,12 +143,12 @@ export default function Feeds() {
           headerRight: () => (
             <View style={{ flexDirection: "row", alignItems: "center", gap: sizes.s1 }}>
               <Pressable
-                style={[style.rightButton, nativeRefreshRunning && { opacity: 0.5 }]}
+                style={[style.rightButton, updating && { opacity: 0.5 }]}
                 android_ripple={{ color: colors.textGrey, borderless: true }}
                 onPress={handleNativeRefresh}
-                disabled={nativeRefreshRunning}
+                disabled={!!updating}
               >
-                {nativeRefreshRunning ? (
+                {updating ? (
                   <ActivityIndicator size="small" color={colors.text} />
                 ) : (
                   <MaterialIcons
@@ -197,27 +181,26 @@ export default function Feeds() {
         onDismiss={dismissToast}
       />
 
-      {loadingStatus && (
+      {loading && (
         <Text style={{ color: colors.text, padding: sizes.s1 }}>
-          {getStatusLabel(loadingStatus)}
+          {getStatusLabel(loading)}
         </Text>
       )}
 
-      {nativeRefreshResult && (
+      {!loading && updating && (
         <Text
           style={{
-            color: nativeRefreshResult.startsWith("Error")
-              ? "#ff4444"
-              : colors.text,
-            padding: sizes.s1,
-            fontWeight: "bold",
+            color: colors.textGrey,
+            fontSize: fonts.marginP,
+            paddingHorizontal: sizes.s1,
+            paddingBottom: sizes.s1,
           }}
         >
-          Native refresh: {nativeRefreshResult}
+          {getStatusLabel(updating)}
         </Text>
       )}
 
-      {((!loadingStatus && !feeds) || error) && (
+      {((!loading && !feeds) || error) && (
         <>
           <Text style={style.content}>
             The app has failed to get the feed list
@@ -229,7 +212,7 @@ export default function Feeds() {
         </>
       )}
 
-      {!loadingStatus && feeds?.length === 0 && !error && (
+      {!loading && feeds?.length === 0 && !error && (
         <View style={style.contentWrapper}>
           <Text style={style.content}>There are no feeds to show</Text>
           <View style={style.actions}>
@@ -250,7 +233,7 @@ export default function Feeds() {
         </View>
       )}
 
-      {!loadingStatus && feeds && feeds.length > 0 && !error && (
+      {!loading && feeds && feeds.length > 0 && !error && (
         <HTMLPagesNav
           key={resetNavigation}
           name="feed"

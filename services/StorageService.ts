@@ -1,8 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { AsyncStorageStatic } from "@react-native-async-storage/async-storage";
-import { feedCacheRepository } from "@/infrastructure/FeedCacheRepository";
 import { articleCacheRepository } from "@/infrastructure/ArticleCacheRepository";
-import { lastRefreshRepository } from "@/infrastructure/LastRefreshRepository";
+import { refreshRepository } from "@/infrastructure/RefreshRepository";
+import { activeRefreshRepository } from "@/infrastructure/ActiveRefreshRepository";
+import { pendingRefreshRepository } from "@/infrastructure/PendingRefreshRepository";
+import { lastFetchCompletionRepository } from "@/infrastructure/LastFetchCompletionRepository";
 import { articleCacheService } from "./ArticleCacheService";
 
 export class StorageService {
@@ -55,23 +57,27 @@ export class StorageService {
     }
   }
 
-  // Clear only app-specific caches (keeps user data like feeds list)
-  // Stage 1: Clears SQLite cache tables and HTML files, preserves legacy AsyncStorage backup keys
-  // Note: data_migrations table is NOT cleared - migration marker persists to prevent reimport
+  /**
+   * Clear only app-specific caches (keeps user data like feeds list).
+   * Stage 2: Clears SQLite refresh/article data + HTML files.
+   * Preserves @noticioso-feedList (user data) and never reimports legacy caches.
+   */
   async clearCaches(): Promise<void> {
     try {
-      // Clear SQLite cache tables (data_migrations table is preserved)
-      await feedCacheRepository.clear();
+      // Clear SQLite refresh data
+      await refreshRepository.clear();
+      await activeRefreshRepository.clear();
+      await pendingRefreshRepository.clear();
+      await lastFetchCompletionRepository.clear();
+
+      // Clear SQLite article metadata
       await articleCacheRepository.clear();
-      await lastRefreshRepository.clear();
 
       // Clear HTML files from filesystem
       await articleCacheService.clearFileCache();
 
-      // Note: Legacy AsyncStorage backup keys are preserved during Stage 1
-      // data_migrations table is preserved to prevent reimport on next launch
-      // @noticioso-feedList remains untouched (user data)
-      // @noticioso-article-ranking remains untouched (transient, not migrated)
+      // Note: @noticioso-feedList remains untouched (user data)
+      // Note: Legacy cleanup is handled by LegacyCacheCleanup on startup
     } catch (error) {
       throw new Error(`Failed to clear caches: ${error}`);
     }

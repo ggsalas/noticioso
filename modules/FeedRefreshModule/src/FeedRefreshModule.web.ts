@@ -1,10 +1,10 @@
 import { registerWebModule, NativeModule } from 'expo';
 
-import { FeedRefreshModuleEvents } from './FeedRefreshModule.types';
+import { FeedRefreshModuleEvents, NativeFeedInput } from './FeedRefreshModule.types';
 
 class FeedRefreshModule extends NativeModule<FeedRefreshModuleEvents> {
-  async refreshFeeds(urls: string[]): Promise<string> {
-    // Web stub - not implemented for Phase 0 (Android-only)
+  async refreshFeeds(feeds: NativeFeedInput[]): Promise<string> {
+    // Web stub - not implemented for Stage 2 (Android-only)
     return 'Web platform not supported for native feed refresh';
   }
 }

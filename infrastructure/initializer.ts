@@ -1,17 +1,19 @@
 import { getDatabase, resetDatabaseForTesting } from "./database";
 import { runMigrations } from "./migrate";
-import { migrateFromAsyncStorage } from "./migrateFromAsyncStorage";
-import { feedCacheRepository } from "./FeedCacheRepository";
-import { articleCacheRepository } from "./ArticleCacheRepository";
-import { lastRefreshRepository } from "./LastRefreshRepository";
-import { dataMigrationRepository } from "./DataMigrationRepository";
+import { legacyCacheCleanup } from "./legacy/LegacyCacheCleanup";
 
 // Track initialization state
 let initializationPromise: Promise<void> | null = null;
 let isInitialized = false;
 
 /**
- * Initialize the database, run schema migrations, and migrate data from AsyncStorage.
+ * Initialize the database with Stage 2 clean baseline.
+ *
+ * Startup ordering:
+ * 1. Run one-time legacy cleanup (preserves feedList, removes old caches)
+ * 2. Run schema migrations (detects and drops Stage 1 tables if present)
+ * 3. Database is ready for use
+ *
  * This function is idempotent and safe to call multiple times.
  * It ensures the database is ready before FeedsProvider reads caches.
  */
@@ -29,17 +31,15 @@ export async function initializeDatabase(): Promise<void> {
   // Start initialization
   initializationPromise = (async () => {
     try {
-      // Open database and run schema migrations
+      // Step 1: Run one-time legacy cleanup
+      // This preserves @noticioso-feedList and removes old AsyncStorage caches
+      // Safe to call multiple times (idempotent)
+      await legacyCacheCleanup.run();
+
+      // Step 2: Open database and run schema migrations
+      // If Stage 1 tables exist, they will be dropped and clean baseline created
       await getDatabase();
       await runMigrations();
-
-      // Migrate data from AsyncStorage to SQLite
-      await migrateFromAsyncStorage(
-        feedCacheRepository,
-        articleCacheRepository,
-        lastRefreshRepository,
-        dataMigrationRepository
-      );
 
       isInitialized = true;
     } catch (error) {

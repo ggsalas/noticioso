@@ -440,3 +440,142 @@ donde apliquen + manuales) y aprobación explícita del usuario**.
 - Los **orígenes de caché en AsyncStorage** migrados en la Etapa 1 **se conservan
   durante la validación de esa etapa**; la **limpieza ocurre solo con aprobación
   explícita del usuario**.
+
+---
+
+## 10. Addendum (2026-10-05) — Reemplazo de Etapa 1 con baseline limpio
+
+### 10.1 Contexto y decisión
+
+La Etapa 1 (migración idempotente desde AsyncStorage a SQLite con tablas
+`feed_cache`, `last_full_refresh`, `data_migrations`, `migration_state`) **nunca
+llegó a producción**. El código existía en el repositorio pero no se desplegó ni se
+usó en producción.
+
+**Decisión del usuario (2026-10-05):** Reemplazar la Etapa 1 con un baseline limpio
+de Etapa 2, eliminando toda la lógica de migración y fallbacks legacy.
+
+### 10.2 Qué se preservó
+
+- **`@noticioso-feedList`**: La lista de feeds del usuario **siempre permanece en
+  AsyncStorage**. Nunca se migró ni se migrará a SQLite.
+- **Funcionalidad de Etapa 2**: Native feed fetch/parse, toast apply transaction,
+  active list during refresh, JS article on-demand.
+
+### 10.3 Qué se eliminó
+
+**Repositorios legacy eliminados:**
+- `infrastructure/FeedCacheRepository.ts` (tabla `feed_cache`)
+- `infrastructure/LastRefreshRepository.ts` (tabla `last_full_refresh`)
+- `infrastructure/DataMigrationRepository.ts` (tabla `data_migrations`)
+- `infrastructure/migrateFromAsyncStorage.ts` (migración desde AsyncStorage)
+- `infrastructure/migrateFromAsyncStorage.test.ts`
+
+**Lógica eliminada:**
+- Migración de `@noticioso-feedCache-*` a SQLite
+- Migración de `@noticioso-lastFullRefresh` a SQLite
+- Migración de `@noticioso-articleHtmlCache-*` a SQLite
+- Fallbacks a tablas legacy en `FeedCacheRepository`
+- Llamada a `migrateFromAsyncStorage()` en `initializer.ts`
+
+### 10.4 Cleanup destructivo one-time
+
+**Ubicación:** `infrastructure/legacy/LegacyCacheCleanup.ts`
+
+**Orden de ejecución:**
+1. **Antes** de cualquier consumidor nuevo o inicialización de schema
+2. **Antes** de `runMigrations()` en `initializer.ts`
+
+**Qué hace:**
+1. Preserva `@noticioso-feedList` (lista de feeds del usuario)
+2. Elimina claves legacy de AsyncStorage:
+   - `@noticioso-feedCache`, `@noticioso-feedCacheIndex`
+   - `@noticioso-lastFullRefresh`
+   - `@noticioso-articleHtmlCache`, `@noticioso-articleHtmlCacheIndex`
+   - `@noticioso-articleMetadataCache`
+   - `@noticioso-article-ranking`
+   - Todas las claves con prefijo `@noticioso-feedCache-*`
+   - Todas las claves con prefijo `@noticioso-articleHtmlCache-*`
+3. Elimina archivos HTML legacy del filesystem (`article-html/` en cache directory)
+4. Marca cleanup como completado (`@noticioso-legacyCleanupCompleted`)
+5. Si falla, no marca como completado → se reintenta en el próximo launch
+6. Si ya está completado, no se ejecuta de nuevo (idempotente)
+
+**DB reset automático:**
+- Si existe una DB con tablas legacy de Etapa 1 (`feed_cache`, `last_full_refresh`,
+  `data_migrations`, `migration_state`), `migrate.ts` las detecta y las elimina
+- Crea el schema limpio de Etapa 2 desde cero
+
+### 10.5 Servicios actualizados
+
+**`FeedCacheService`:**
+- Ahora lee de `activeRefreshRepository` + `feedSnapshotRepository`
+- Usa `lastFetchCompletionRepository` para timestamps (no `last_full_refresh`)
+- `set()` y `delete()` son no-ops o escriben al pending refresh (si existe)
+
+**`StorageService.clearCaches()`:**
+- Limpia tablas SQL de Etapa 2: `refreshes`, `feed_snapshots`, `active_refresh`,
+  `pending_refresh`, `last_fetch_completion`, `article_metadata`
+- Limpia archivos HTML del filesystem
+- **Nunca** toca `@noticioso-feedList`
+- **Nunca** reimporta caches legacy
+
+### 10.6 Pruebas
+
+**Tests agregados/actualizados:**
+- `infrastructure/legacy/LegacyCacheCleanup.test.ts`:
+  - Preserva `@noticioso-feedList`
+  - Idempotencia (no se re-ejecuta tras éxito)
+  - Retry en caso de fallo
+  - Limpieza de claves legacy
+  - Limpieza de archivos HTML
+- `services/FeedCacheService.test.ts`:
+  - Lee de active refresh snapshots
+  - Escribe a pending refresh (si existe)
+  - Obtiene timestamp de `active_refresh.applied_at`
+
+**Resultados de validación (2026-10-05):**
+- ✅ Jest: 105 tests pasaron
+- ✅ TypeScript: compilación exitosa
+- ✅ ESLint: sin errores
+- ⚠️ Android build: requiere SDK configurado (limitación de entorno)
+
+### 10.7 Implicaciones para usuarios existentes
+
+**Usuarios con Etapa 1 (nunca existieron en producción):**
+- Si tuvieran datos en tablas legacy, se perderían (DB reset)
+- Pero como Etapa 1 nunca se desplegó, esto no afecta a nadie
+
+**Usuarios con datos pre-Etapa 1 (AsyncStorage legacy):**
+- `@noticioso-feedList` se preserva ✅
+- Todos los demás caches se eliminan (no había valor en migrarlos)
+- El usuario verá la lista de feeds intacta
+- Los artículos cacheados se perderán (se re-descargarán on-demand)
+
+**Usuarios nuevos:**
+- Baseline limpio desde el inicio
+- No hay migración ni fallbacks legacy
+- Solo Etapa 2 funcional
+
+### 10.8 Código que ya no existe
+
+**Imports eliminados de `infrastructure/index.ts`:**
+- `FeedCacheRepository`, `feedCacheRepository`
+- `LastRefreshRepository`, `lastRefreshRepository`
+- `DataMigrationRepository`, `dataMigrationRepository`
+- `migrateFromAsyncStorage`, `MIGRATION_MARKER`
+- `getMigrationState`
+
+**Imports eliminados de servicios:**
+- `FeedService`: ya no usa `FeedCacheRepository` ni `LastRefreshRepository`
+- `StorageService`: ya no usa repos legacy para `clearCaches()`
+- `FeedCacheService`: reescrito para usar repos de Etapa 2
+- `initializer.ts`: ya no llama a `migrateFromAsyncStorage()`
+
+---
+
+**Estado actual (2026-10-05):**
+- Etapa 1 completamente eliminada
+- Baseline limpio de Etapa 2 en su lugar
+- Cleanup destructivo implementado y probado
+- Listo para continuar con Etapa 3 (Native Article Downloader) cuando se apruebe
