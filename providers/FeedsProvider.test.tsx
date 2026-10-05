@@ -38,9 +38,9 @@ jest.mock("@/services/FeedService", () => {
       saveFeeds: jest.fn(),
       createOrEditFeed: jest.fn(),
       deleteFeed: jest.fn(),
-      getFeedContent: jest.fn().mockImplementation((url: string) => 
-        Promise.resolve(url.includes("feed1") 
-          ? createMockFeedContent(5) 
+      getFeedContent: jest.fn().mockImplementation((url: string) =>
+        Promise.resolve(url.includes("feed1")
+          ? createMockFeedContent(5)
           : createMockFeedContent(10)
         )
       ),
@@ -58,12 +58,24 @@ jest.mock("@/services/FeedCacheService", () => ({
   },
 }));
 
+jest.mock("@/services/FeedRefreshService", () => ({
+  feedRefreshService: {
+    refreshAllFeeds: jest.fn(),
+    hasPendingRefresh: jest.fn().mockResolvedValue(false),
+    applyPendingRefresh: jest.fn().mockResolvedValue(false),
+    shouldRefresh: jest.fn().mockResolvedValue(false),
+    getLastFetchCompletion: jest.fn().mockResolvedValue(null),
+    getFeedData: jest.fn(),
+  },
+}));
+
 // Now import everything after mocks are set up
 import { renderHook, act, waitFor } from "@testing-library/react-native";
 import React from "react";
 import { FeedsProvider, useFeedsContext } from "./FeedsProvider";
 import { feedService } from "@/services/FeedService";
 import { feedCacheService } from "@/services/FeedCacheService";
+import { feedRefreshService } from "@/services/FeedRefreshService";
 import { useAsyncFn } from "../hooks/useAsyncFn";
 import { batchPromises } from "../lib/batchPromises";
 
@@ -275,6 +287,91 @@ describe("FeedsProvider", () => {
 
       expect(feedService.deleteFeed).toHaveBeenCalledWith(mockFeeds[0]);
       expect(runFn).toHaveBeenCalled();
+    });
+  });
+
+  describe("lastFullRefreshAt (header 'Last full update')", () => {
+    const APPLIED_AT = "2026-10-03T10:00:00.000Z";
+
+    it("uses the applied refresh timestamp on initial load, not last_fetch_completion", async () => {
+      mockUseAsyncFn.mockReturnValue({
+        data: mockFeeds,
+        loading: false,
+        error: null,
+        runFn: jest.fn(),
+      });
+      (feedCacheService.getLastFullRefresh as jest.Mock).mockResolvedValue(
+        APPLIED_AT
+      );
+      (feedRefreshService.getLastFetchCompletion as jest.Mock).mockResolvedValue(
+        "2026-10-03T11:30:00.000Z"
+      );
+
+      const { result } = renderHook(useFeedsContext, { wrapper });
+
+      await waitFor(() => {
+        expect(result.current.lastFullRefreshAt).toBe(APPLIED_AT);
+      });
+      expect(feedCacheService.getLastFullRefresh).toHaveBeenCalled();
+      expect(feedRefreshService.getLastFetchCompletion).not.toHaveBeenCalled();
+    });
+
+    it("leaves lastFullRefreshAt unchanged after refreshAllFeeds (before toast tap)", async () => {
+      mockUseAsyncFn.mockReturnValue({
+        data: mockFeeds,
+        loading: false,
+        error: null,
+        runFn: jest.fn(),
+      });
+      (feedCacheService.getLastFullRefresh as jest.Mock).mockResolvedValue(
+        APPLIED_AT
+      );
+      (feedRefreshService.refreshAllFeeds as jest.Mock).mockResolvedValue("ok");
+
+      const { result } = renderHook(useFeedsContext, { wrapper });
+      await waitFor(() => {
+        expect(result.current.lastFullRefreshAt).toBe(APPLIED_AT);
+      });
+
+      (feedRefreshService.hasPendingRefresh as jest.Mock).mockResolvedValue(true);
+      await act(async () => {
+        await result.current.refreshAllFeeds();
+      });
+
+      expect(feedRefreshService.refreshAllFeeds).toHaveBeenCalled();
+      // Native fetch must not move the header timestamp before the toast is tapped
+      expect(result.current.lastFullRefreshAt).toBe(APPLIED_AT);
+      expect(feedCacheService.getLastFullRefresh).toHaveBeenCalledTimes(1);
+      expect(result.current.shouldShowUpdateToast).toBe(true);
+    });
+
+    it("reloads the applied timestamp after refreshAndUpdateToast applies the pending refresh", async () => {
+      const appliedAfterTap = "2026-10-04T09:00:00.000Z";
+      const runFn = jest.fn();
+      mockUseAsyncFn.mockReturnValue({
+        data: mockFeeds,
+        loading: false,
+        error: null,
+        runFn,
+      });
+      (feedCacheService.getLastFullRefresh as jest.Mock)
+        .mockResolvedValueOnce(APPLIED_AT)
+        .mockResolvedValueOnce(appliedAfterTap);
+      (feedRefreshService.applyPendingRefresh as jest.Mock).mockResolvedValue(true);
+
+      const { result } = renderHook(useFeedsContext, { wrapper });
+      await waitFor(() => {
+        expect(result.current.lastFullRefreshAt).toBe(APPLIED_AT);
+      });
+
+      await act(async () => {
+        await result.current.refreshAndUpdateToast();
+      });
+
+      expect(feedRefreshService.applyPendingRefresh).toHaveBeenCalled();
+      expect(runFn).toHaveBeenCalled();
+      expect(result.current.lastFullRefreshAt).toBe(appliedAfterTap);
+      expect(result.current.shouldShowUpdateToast).toBe(false);
     });
   });
 });

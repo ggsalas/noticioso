@@ -1,5 +1,5 @@
 import { Link, Stack, useRouter } from "expo-router";
-import { Pressable, Text, StyleSheet, View } from "react-native";
+import { Pressable, Text, StyleSheet, View, ActivityIndicator } from "react-native";
 import { useCallback, useMemo, useState } from "react";
 import { HandleRouterLinkData } from "@/types";
 import { useThemeContext } from "@/theme/ThemeProvider";
@@ -34,16 +34,18 @@ export default function Feeds() {
     switch (status.name) {
       case "FETCHING":
         return `Fetching feeds ${status.current} of ${status.total}`;
-      case "PRELOADING":
-        return `Preloading articles ${status.current} of ${status.total}`;
       default:
         return "Loading...";
     }
   };
 
-  const loadingStatus = loading || updating;
   const router = useRouter();
   const [resetNavigation, setResetNavigation] = useState(1);
+
+  const handleNativeRefresh = useCallback(async () => {
+    if (updating) return;
+    await refreshAllFeeds();
+  }, [updating, refreshAllFeeds]);
 
   const previousRoute = usePreviousRoute<{ feed_url: string }>();
   const previousFeedUrl = previousRoute?.params?.feed_url;
@@ -139,18 +141,36 @@ export default function Feeds() {
             </View>
           ),
           headerRight: () => (
-            <Link href="/config/feedList" asChild>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: sizes.s1 }}>
               <Pressable
-                style={style.rightButton}
+                style={[style.rightButton, updating && { opacity: 0.5 }]}
                 android_ripple={{ color: colors.textGrey, borderless: true }}
+                onPress={handleNativeRefresh}
+                disabled={!!updating}
               >
-                <MaterialIcons
-                  name="settings"
-                  size={sizes.s1}
-                  color={colors.text}
-                />
+                {updating ? (
+                  <ActivityIndicator size="small" color={colors.text} />
+                ) : (
+                  <MaterialIcons
+                    name="refresh"
+                    size={sizes.s1}
+                    color={colors.text}
+                  />
+                )}
               </Pressable>
-            </Link>
+              <Link href="/config/feedList" asChild>
+                <Pressable
+                  style={style.rightButton}
+                  android_ripple={{ color: colors.textGrey, borderless: true }}
+                >
+                  <MaterialIcons
+                    name="settings"
+                    size={sizes.s1}
+                    color={colors.text}
+                  />
+                </Pressable>
+              </Link>
+            </View>
           ),
         }}
       />
@@ -161,13 +181,26 @@ export default function Feeds() {
         onDismiss={dismissToast}
       />
 
-      {loadingStatus && (
+      {loading && (
         <Text style={{ color: colors.text, padding: sizes.s1 }}>
-          {getStatusLabel(loadingStatus)}
+          {getStatusLabel(loading)}
         </Text>
       )}
 
-      {((!loadingStatus && !feeds) || error) && (
+      {!loading && updating && (
+        <Text
+          style={{
+            color: colors.textGrey,
+            fontSize: fonts.marginP,
+            paddingHorizontal: sizes.s1,
+            paddingBottom: sizes.s1,
+          }}
+        >
+          {getStatusLabel(updating)}
+        </Text>
+      )}
+
+      {((!loading && !feeds) || error) && (
         <>
           <Text style={style.content}>
             The app has failed to get the feed list
@@ -179,7 +212,7 @@ export default function Feeds() {
         </>
       )}
 
-      {!loadingStatus && feeds?.length === 0 && !error && (
+      {!loading && feeds?.length === 0 && !error && (
         <View style={style.contentWrapper}>
           <Text style={style.content}>There are no feeds to show</Text>
           <View style={style.actions}>
@@ -200,7 +233,7 @@ export default function Feeds() {
         </View>
       )}
 
-      {!loadingStatus && feeds && feeds.length > 0 && !error && (
+      {!loading && feeds && feeds.length > 0 && !error && (
         <HTMLPagesNav
           key={resetNavigation}
           name="feed"

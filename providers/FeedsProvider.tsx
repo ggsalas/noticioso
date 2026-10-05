@@ -7,17 +7,17 @@ import {
   useCallback,
   useRef,
 } from "react";
-import { useAsyncFn } from "../hooks/useAsyncFn";
+import { AppState, AppStateStatus } from "react-native";
 import { feedService } from "@/services/FeedService";
+import { feedRefreshService } from "@/services/FeedRefreshService";
 import { feedCacheService } from "@/services/FeedCacheService";
 import { Feed } from "@/types";
-
-const CACHE_STALE_TIME_MS = 3 * 60 * 60 * 1000;
+import { useAsyncFn } from "@/hooks/useAsyncFn";
 
 type FeedsProviderProps = { children: ReactNode };
 
 type ProgressStatus = {
-  name: "FETCHING" | "PRELOADING";
+  name: "FETCHING";
   current: number;
   total: number;
 };
@@ -75,8 +75,9 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
   );
   const [shouldShowUpdateToast, setShouldShowUpdateToast] = useState(false);
   const previousFeedUrlsRef = useRef<Set<string>>(new Set());
+  const appStateRef = useRef(AppState.currentState);
 
-  // Cargar counts desde cache INMEDIATAMENTE (sin network)
+  // Load feed article counts from active refresh
   const loadCachedCounts = useCallback(async (feeds: Feed[]) => {
     const counts: Record<string, number> = {};
 
@@ -93,64 +94,30 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
     return counts;
   }, []);
 
-  // Determinar si debe mostrar el toast
-  const checkShouldShowToast = useCallback(
-    async (
-      feeds: Feed[],
-      cachedCounts: Record<string, number>,
-      previousUrls: Set<string>,
-    ) => {
-      if (!feeds || feeds.length === 0) return false;
+  // Check if toast should be shown (READY pending refresh exists)
+  const checkShouldShowToast = useCallback(async () => {
+    const hasPending = await feedRefreshService.hasPendingRefresh();
+    return hasPending;
+  }, []);
 
-      const lastRefresh = await feedCacheService.getLastFullRefresh();
-
-      // Condition 1: cache is stale (passed minimum time)
-      const staleThreshold = Date.now() - CACHE_STALE_TIME_MS;
-      const isCacheStale =
-        lastRefresh === null ||
-        new Date(lastRefresh).getTime() < staleThreshold;
-
-      // Condition 2: only new or removed feeds (NOT reordered)
-      const currentUrls = new Set(feeds.map((f) => f.url));
-      const newUrls = [...currentUrls].filter((url) => !previousUrls.has(url));
-      const removedUrls = [...previousUrls].filter(
-        (url) => !currentUrls.has(url),
-      );
-      const feedsChanged =
-        previousUrls.size > 0 && (newUrls.length > 0 || removedUrls.length > 0);
-
-      // Condition 3: first time (previousUrls empty) and there are uncached feeds
-      const isFirstTime = previousUrls.size === 0;
-      const hasUncachedFeeds = feeds.some(
-        (feed) => cachedCounts[feed.url] === undefined,
-      );
-
-      return isCacheStale || feedsChanged || (isFirstTime && hasUncachedFeeds);
-    },
-    [],
-  );
-
-  // Cargar datos desde cache al montar
+  // Load initial data and check for pending refresh
   useEffect(() => {
     if (!data || data.length === 0) return;
 
     const initData = async () => {
-      const previousUrls = previousFeedUrlsRef.current;
       const currentUrls = new Set(data.map((f) => f.url));
 
-      // Cargar counts desde cache
+      // Load counts from active refresh
       const counts = await loadCachedCounts(data);
 
-      // Load last refresh timestamp
-      const lastRefresh = await feedCacheService.getLastFullRefresh();
-      setLastFullRefreshAt(lastRefresh);
+      // Load the applied/active refresh timestamp for the header
+      // (applied_at is set transactionally when a pending refresh is applied
+      // on toast tap, never by the native fetch)
+      const appliedAt = await feedCacheService.getLastFullRefresh();
+      setLastFullRefreshAt(appliedAt);
 
-      // Verificar condiciones del toast
-      const shouldToast = await checkShouldShowToast(
-        data,
-        counts,
-        previousUrls,
-      );
+      // Check if toast should be shown
+      const shouldToast = await checkShouldShowToast();
       setShouldShowUpdateToast(shouldToast);
 
       // Save current URLs for next comparison
@@ -160,41 +127,85 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
     initData();
   }, [data, loadCachedCounts, checkShouldShowToast]);
 
-  // Actualizar todas las feeds con el nuevo flujo
+  // Refresh all feeds using native module (Stage 2 flow)
+  // Does NOT update counts or timestamps - those are updated only when toast is tapped
   const refreshAllFeeds = useCallback(async () => {
     const feeds = data;
     if (!feeds || feeds.length === 0) return;
 
+    // Prevent duplicate refresh
+    if (updating) return;
+
     setUpdating({ name: "FETCHING", current: 0, total: feeds.length });
     try {
-      await feedService.fetchAndCacheAllFeedsRanked((name, current, total) =>
-        setUpdating({ name, current, total }),
-      );
+      // Call native module to fetch and parse feeds
+      await feedRefreshService.refreshAllFeeds();
 
-      // Update counts from cache after fetch
-      const counts: Record<string, number> = {};
-      await Promise.allSettled(
-        feeds.map(async (feed) => {
-          const cached = await feedCacheService.get(feed.url);
-          if (cached) {
-            counts[feed.url] = cached.data.rss?.channel?.item?.length ?? 0;
-          }
-        }),
-      );
-      setFeedArticleCounts(counts);
+      // DO NOT update counts or timestamps yet - they come from active refresh
+      // Only update them when toast is tapped (apply pending)
 
-      // Actualizar timestamp
-      const now = new Date().toISOString();
-      await feedCacheService.setLastFullRefresh(now);
-      setLastFullRefreshAt(now);
+      // Check if READY pending exists and show toast
+      const hasPending = await feedRefreshService.hasPendingRefresh();
+      if (hasPending) {
+        setShouldShowUpdateToast(true);
+      }
 
-      // Ocultar toast
-      setShouldShowUpdateToast(false);
       previousFeedUrlsRef.current = new Set(feeds.map((f) => f.url));
+    } catch (e) {
+      console.error("Failed to refresh feeds:", e);
+      setActionError("Failed to refresh feeds");
     } finally {
       setUpdating(null);
     }
-  }, [data]);
+  }, [data, updating]);
+
+  // On initial mount, auto-trigger refresh if stale and no pending
+  const initialMountRef = useRef(true);
+  useEffect(() => {
+    if (!data || data.length === 0 || !initialMountRef.current) return;
+
+    initialMountRef.current = false;
+
+    const checkAndRefresh = async () => {
+      const shouldToast = await checkShouldShowToast();
+      if (!shouldToast) {
+        const shouldRefresh = await feedRefreshService.shouldRefresh();
+        if (shouldRefresh) {
+          await refreshAllFeeds();
+        }
+      }
+    };
+
+    checkAndRefresh();
+  }, [data, checkShouldShowToast, refreshAllFeeds]);
+
+  // Trigger refresh on foreground when no READY pending and last fetch > 1 hour
+  useEffect(() => {
+    const handleAppStateChange = async (nextAppState: AppStateStatus) => {
+      if (
+        appStateRef.current.match(/inactive|background/) &&
+        nextAppState === "active"
+      ) {
+        // App came to foreground
+        // First check if there's already a pending refresh
+        const shouldToast = await feedRefreshService.hasPendingRefresh();
+        if (shouldToast) {
+          setShouldShowUpdateToast(true);
+          return;
+        }
+
+        // No pending, check if we should refresh
+        const shouldRefresh = await feedRefreshService.shouldRefresh();
+        if (shouldRefresh) {
+          await refreshAllFeeds();
+        }
+      }
+      appStateRef.current = nextAppState;
+    };
+
+    const subscription = AppState.addEventListener("change", handleAppStateChange);
+    return () => subscription.remove();
+  }, [refreshAllFeeds]);
 
   const dismissToast = useCallback(() => {
     setShouldShowUpdateToast(false);
@@ -204,10 +215,20 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
     setFeedArticleCounts({});
   }, []);
 
+  // Apply pending refresh (toast tap handler)
   const refreshAndUpdateToast = useCallback(async () => {
-    setShouldShowUpdateToast(false);
-    await refreshAllFeeds();
-  }, [refreshAllFeeds]);
+    const applied = await feedRefreshService.applyPendingRefresh();
+    if (applied) {
+      setShouldShowUpdateToast(false);
+      // Reload feeds to show new active refresh data
+      await refetchFeeds();
+      const counts = await loadCachedCounts(data || []);
+      setFeedArticleCounts(counts);
+      // Reload the applied timestamp (updated transactionally during apply)
+      const appliedAt = await feedCacheService.getLastFullRefresh();
+      setLastFullRefreshAt(appliedAt);
+    }
+  }, [refetchFeeds, data, loadCachedCounts]);
 
   const handleImportFeeds = async (feeds: string) => {
     try {
@@ -271,7 +292,7 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
       value={{
         feeds: data,
         loading: loading ? { name: "FETCHING", current: 0, total: 0 } : null,
-        error: error || actionError,
+        error: error ?? actionError,
         feedArticleCounts,
         updating,
         lastFullRefreshAt,

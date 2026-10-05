@@ -1,5 +1,11 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { AsyncStorageStatic } from "@react-native-async-storage/async-storage";
+import { articleCacheRepository } from "@/infrastructure/ArticleCacheRepository";
+import { refreshRepository } from "@/infrastructure/RefreshRepository";
+import { activeRefreshRepository } from "@/infrastructure/ActiveRefreshRepository";
+import { pendingRefreshRepository } from "@/infrastructure/PendingRefreshRepository";
+import { lastFetchCompletionRepository } from "@/infrastructure/LastFetchCompletionRepository";
+import { articleCacheService } from "./ArticleCacheService";
 
 export class StorageService {
   constructor(private asyncStorage: AsyncStorageStatic) {}
@@ -51,25 +57,27 @@ export class StorageService {
     }
   }
 
-  // Clear only app-specific caches (keeps user data like feeds list)
+  /**
+   * Clear only app-specific caches (keeps user data like feeds list).
+   * Stage 2: Clears SQLite refresh/article data + HTML files.
+   * Preserves @noticioso-feedList (user data) and never reimports legacy caches.
+   */
   async clearCaches(): Promise<void> {
     try {
-      const allKeys = await this.asyncStorage.getAllKeys();
-      const cacheKeys = [
-        "@noticioso-feedCache-",
-        "@noticioso-articleHtmlCache-",
-        "@noticioso-articleHtmlCache-index",
-        "@noticioso-lastFullRefresh",
-        "@noticioso-article-ranking",
-      ];
+      // Clear SQLite refresh data
+      await refreshRepository.clear();
+      await activeRefreshRepository.clear();
+      await pendingRefreshRepository.clear();
+      await lastFetchCompletionRepository.clear();
 
-      const keysToRemove = allKeys.filter((key) =>
-        cacheKeys.some((cacheKey) => key.includes(cacheKey)),
-      );
+      // Clear SQLite article metadata
+      await articleCacheRepository.clear();
 
-      if (keysToRemove.length > 0) {
-        await this.asyncStorage.multiRemove(keysToRemove);
-      }
+      // Clear HTML files from filesystem
+      await articleCacheService.clearFileCache();
+
+      // Note: @noticioso-feedList remains untouched (user data)
+      // Note: Legacy cleanup is handled by LegacyCacheCleanup on startup
     } catch (error) {
       throw new Error(`Failed to clear caches: ${error}`);
     }
