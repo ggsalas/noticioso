@@ -49,9 +49,13 @@ npm run ios
 # Lint
 npm run lint
 
-# Tests
+# Tests (requires Node 22.5+ for the built-in real SQLite test engine)
 npm test
 ```
+
+Infrastructure migration/repository tests use Node's `node:sqlite` against a real
+in-memory SQLite database; the production app still uses `expo-sqlite`. There is no
+hand-written SQL mock in the Jest setup.
 
 For a native dev build without Expo Go (required to debug native behaviour):
 
@@ -59,6 +63,34 @@ For a native dev build without Expo Go (required to debug native behaviour):
 npx expo install expo-dev-client
 npx expo run:android
 ```
+
+### Android native build prerequisites
+
+`npm start` only boots Metro — the JavaScript bundler and dev server. It never touches the Android toolchain. `npm run android` (and `npx expo run:android`) additionally compiles the native project, installs the APK on the device, and therefore needs an Android SDK and a compatible JDK.
+
+Use **JDK 17**, not the newest JDK you can install. Gradle and the Android tooling used by this project reject a newer runtime — running a build on Java 27 fails with `Unsupported class file major version 71`.
+
+On macOS with Homebrew:
+
+```bash
+# Install Eclipse Temurin JDK 17
+brew install --cask temurin@17
+
+# Point the build at it for this shell
+export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+
+# Confirm the active runtime reports 17.x
+java -version
+```
+
+Install the Android SDK **outside** the repository and point the build at it with `ANDROID_HOME`. On this machine the SDK lives at `/opt/homebrew/share/android-commandlinetools` (your location will differ):
+
+```bash
+# Example - use your own SDK location
+export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
+```
+
+`.gitignore` also carries root-anchored patterns (`/.sdk/`, `/build-tools/`, `/licenses/`, `/platform-tools/`, `/platforms/`). They are not where the SDK is supposed to live — they only prevent accidental commits if SDK artifacts ever end up placed inside the repo. The generated root `android/` and `ios/` projects are ignored the same way, along with Gradle build outputs under local modules (`/modules/*/android/build/`). Hand-written native module sources stay tracked: `modules/*/android/build.gradle` and `modules/*/android/src/**` (including the Kotlin sources) are committed with the app.
 
 ## Architecture
 

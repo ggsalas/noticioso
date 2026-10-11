@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { feedService } from "@/services/FeedService";
+import { onArticleDownloadFeedComplete } from "@/infrastructure/ArticleDownloadEventSubscriber";
 import type { FeedData } from "~/types";
 
 type UseFeedContent = {
@@ -50,6 +51,21 @@ export const useFeedContent = (url: string): UseFeedContent => {
   useEffect(() => {
     fetchContent();
   }, [fetchContent]);
+
+  // Subscribe to article download completion events
+  // When articles for this feed are downloaded, refresh the content
+  useEffect(() => {
+    const subscription = onArticleDownloadFeedComplete((event) => {
+      if (event.feedUrl === url) {
+        // Articles downloaded for this feed - refresh content to show updated metadata
+        refreshContent();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [url, refreshContent]);
 
   return {
     data,

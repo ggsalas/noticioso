@@ -1,5 +1,19 @@
 import { StorageService } from "./StorageService";
+import { articleCacheService } from "./ArticleCacheService";
+import { articleCacheRepository } from "@/infrastructure/ArticleCacheRepository";
+import { refreshRepository } from "@/infrastructure/RefreshRepository";
+import { activeRefreshRepository } from "@/infrastructure/ActiveRefreshRepository";
+import { pendingRefreshRepository } from "@/infrastructure/PendingRefreshRepository";
+import { lastFetchCompletionRepository } from "@/infrastructure/LastFetchCompletionRepository";
 import type { AsyncStorageStatic } from "@react-native-async-storage/async-storage";
+
+// Mock the native module
+jest.mock("@/modules/FeedRefreshModule/src/FeedRefreshModule", () => ({
+  __esModule: true,
+  default: {
+    clearArticleDownloadJobs: jest.fn().mockResolvedValue(undefined),
+  },
+}));
 
 const mockStorage = {
   getItem: jest.fn(),
@@ -88,6 +102,31 @@ describe("StorageService", () => {
       await expect(storageService.removeItem("key")).rejects.toThrow(
         'Failed to remove item with key "key"',
       );
+    });
+  });
+
+  describe("clearCaches", () => {
+    it("clears native article download job state and HTML cache", async () => {
+      const FeedRefreshModule = require("@/modules/FeedRefreshModule/src/FeedRefreshModule").default;
+      const clearJobs = jest.spyOn(FeedRefreshModule, "clearArticleDownloadJobs").mockResolvedValue(undefined);
+      const clearHtml = jest.spyOn(articleCacheService, "clearFileCache").mockResolvedValue(undefined);
+      const clearRepos = [
+        jest.spyOn(refreshRepository, "clear").mockResolvedValue(undefined),
+        jest.spyOn(activeRefreshRepository, "clear").mockResolvedValue(undefined),
+        jest.spyOn(pendingRefreshRepository, "clear").mockResolvedValue(undefined),
+        jest.spyOn(lastFetchCompletionRepository, "clear").mockResolvedValue(undefined),
+        jest.spyOn(articleCacheRepository, "clear").mockResolvedValue(undefined),
+      ];
+
+      await storageService.clearCaches();
+
+      expect(clearJobs).toHaveBeenCalledTimes(1);
+      expect(clearHtml).toHaveBeenCalledTimes(1);
+      expect(mockStorage.removeItem).not.toHaveBeenCalledWith("@noticioso-feedList");
+
+      clearJobs.mockRestore();
+      clearHtml.mockRestore();
+      clearRepos.forEach((spy) => spy.mockRestore());
     });
   });
 
