@@ -7,8 +7,8 @@ jest.mock("@/components/HTMLPagesNav", () => {
   const React = require("react");
   const { Text } = require("react-native");
   return {
-    HTMLPagesNav: () =>
-      React.createElement(Text, { testID: "html-pages-nav" }, "NAV"),
+    HTMLPagesNav: (props: any) =>
+      React.createElement(Text, { testID: "html-pages-nav", html: props.html }, "NAV"),
   };
 });
 
@@ -43,6 +43,12 @@ jest.mock("expo-router", () => {
         ),
     },
     useRouter: () => ({ navigate: jest.fn() }),
+    useFocusEffect: (callback: () => void) => {
+      // Execute the callback immediately in tests
+      React.useEffect(() => {
+        callback();
+      }, []);
+    },
   };
 });
 
@@ -65,12 +71,15 @@ const baseContext = {
   loading: null,
   error: null,
   feedArticleCounts: { "https://feed1.com": 5 },
+  feedArticleCacheComplete: {},
   updating: null,
   lastFullRefreshAt: "2026-10-03T10:00:00.000Z",
   shouldShowUpdateToast: false,
+  articleDownloadProgress: null,
   refreshAllFeeds: jest.fn(),
   refreshAndUpdateToast: jest.fn(),
   dismissToast: jest.fn(),
+  refreshActiveFeedCacheState: jest.fn(),
 };
 
 function mockContext(overrides: Record<string, unknown> = {}) {
@@ -96,6 +105,15 @@ describe("Feeds screen (app/feeds)", () => {
     ).toBeNull();
   });
 
+  it("keeps the current list visible during a feed-list recheck", () => {
+    mockContext({ loading: { name: "FETCHING", current: 0, total: 1 } });
+
+    render(<Feeds />);
+
+    expect(screen.getByTestId("html-pages-nav")).toBeTruthy();
+    expect(screen.queryByText("Fetching feeds 0 of 1")).toBeNull();
+  });
+
   it("keeps the active feed list mounted while a native refresh is updating", () => {
     mockContext();
 
@@ -107,10 +125,28 @@ describe("Feeds screen (app/feeds)", () => {
 
     // The existing list must NOT be replaced by a loading state
     expect(screen.getByTestId("html-pages-nav")).toBeTruthy();
-    // Non-blocking refresh status is shown without hiding the list
-    expect(screen.getByText("Fetching feeds 0 of 1")).toBeTruthy();
-    // Header subtitle is hidden while updating (spinner replaces refresh icon)
-    expect(screen.queryByText(/^Last full update at/)).toBeNull();
+    // Worker label replaces the refresh control while the applied timestamp remains stable.
+    expect(screen.getByText("Updating feeds")).toBeTruthy();
+    expect(screen.getByText(/Last full update at/)).toBeTruthy();
+  });
+
+  it("shows per-feed article download progress in header without hiding the active list", () => {
+    mockContext({
+      articleDownloadProgress: {
+        refreshId: "refresh-1",
+        status: "fetching",
+        feedIndex: 2,
+        feedCount: 5,
+        articleCount: 10,
+        articleSuccessCount: 8,
+        articleFailedCount: 2,
+      },
+    });
+
+    render(<Feeds />);
+
+    expect(screen.getByTestId("html-pages-nav")).toBeTruthy();
+    expect(screen.getByText("Fetching articles 2/5")).toBeTruthy();
   });
 
   it("shows the last full update time when not updating", () => {
@@ -129,5 +165,33 @@ describe("Feeds screen (app/feeds)", () => {
 
     expect(screen.getByText("There are no feeds to show")).toBeTruthy();
     expect(screen.queryByTestId("html-pages-nav")).toBeNull();
+  });
+
+  it("shows filled circle indicator when feed cache is complete", () => {
+    mockContext({
+      feedArticleCacheComplete: { "https://feed1.com": true },
+    });
+
+    render(<Feeds />);
+
+    // Check that the HTML contains the filled circle indicator
+    const navElement = screen.getByTestId("html-pages-nav");
+    expect(navElement).toBeTruthy();
+    // The indicator should be present in the HTML content
+    expect(navElement.props.html).toContain("●");
+    expect(navElement.props.html).toContain("All articles cached");
+  });
+
+  it("does not show filled circle indicator when feed cache is incomplete", () => {
+    mockContext({
+      feedArticleCacheComplete: { "https://feed1.com": false },
+    });
+
+    render(<Feeds />);
+
+    const navElement = screen.getByTestId("html-pages-nav");
+    expect(navElement).toBeTruthy();
+    // The indicator should not be present in the HTML content
+    expect(navElement.props.html).not.toContain("●");
   });
 });

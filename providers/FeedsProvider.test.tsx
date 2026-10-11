@@ -69,6 +69,37 @@ jest.mock("@/services/FeedRefreshService", () => ({
   },
 }));
 
+// Mock ArticleDownloadEventSubscriber to control event emission
+const mockOnArticleDownloadFeedStarted = jest.fn();
+const mockOnArticleDownloadFeedComplete = jest.fn();
+jest.mock("@/infrastructure/ArticleDownloadEventSubscriber", () => ({
+  onArticleDownloadFeedStarted: (callback: any) => {
+    mockOnArticleDownloadFeedStarted.mockImplementation(callback);
+    return { remove: jest.fn() };
+  },
+  onArticleDownloadFeedComplete: (callback: any) => {
+    mockOnArticleDownloadFeedComplete.mockImplementation(callback);
+    return { remove: jest.fn() };
+  },
+}));
+
+// Mock articleCacheService for cache completeness
+jest.mock("@/services/ArticleCacheService", () => ({
+  articleCacheService: {
+    getFullyCachedUrls: jest.fn().mockResolvedValue([]),
+  },
+}));
+
+// Mock activeRefreshRepository and feedSnapshotRepository
+jest.mock("@/infrastructure", () => ({
+  activeRefreshRepository: {
+    get: jest.fn().mockResolvedValue(null),
+  },
+  feedSnapshotRepository: {
+    getAllForRefresh: jest.fn().mockResolvedValue([]),
+  },
+}));
+
 // Now import everything after mocks are set up
 import { renderHook, act, waitFor } from "@testing-library/react-native";
 import React from "react";
@@ -372,6 +403,160 @@ describe("FeedsProvider", () => {
       expect(runFn).toHaveBeenCalled();
       expect(result.current.lastFullRefreshAt).toBe(appliedAfterTap);
       expect(result.current.shouldShowUpdateToast).toBe(false);
+    });
+  });
+
+  describe("articleDownloadProgress", () => {
+    beforeEach(() => {
+      mockOnArticleDownloadFeedStarted.mockClear();
+      mockOnArticleDownloadFeedComplete.mockClear();
+    });
+
+    it("should initialize with null progress", () => {
+      mockUseAsyncFn.mockReturnValue({
+        data: mockFeeds,
+        loading: false,
+        error: null,
+        runFn: jest.fn(),
+      });
+
+      const { result } = renderHook(useFeedsContext, { wrapper });
+
+      expect(result.current.articleDownloadProgress).toBeNull();
+    });
+
+    it("should set fetching status when start event is received", () => {
+      mockUseAsyncFn.mockReturnValue({
+        data: mockFeeds,
+        loading: false,
+        error: null,
+        runFn: jest.fn(),
+      });
+
+      const { result } = renderHook(useFeedsContext, { wrapper });
+
+      // Simulate start event
+      act(() => {
+        mockOnArticleDownloadFeedStarted({
+          refreshId: "refresh-1",
+          feedCount: 5,
+          articleCount: 50,
+        });
+      });
+
+      expect(result.current.articleDownloadProgress).toEqual({
+        refreshId: "refresh-1",
+        status: "fetching",
+        feedIndex: 0,
+        feedCount: 5,
+        articleCount: 50,
+        articleSuccessCount: 0,
+        articleFailedCount: 0,
+      });
+    });
+
+    it("should update progress when complete event is received", () => {
+      mockUseAsyncFn.mockReturnValue({
+        data: mockFeeds,
+        loading: false,
+        error: null,
+        runFn: jest.fn(),
+      });
+
+      const { result } = renderHook(useFeedsContext, { wrapper });
+
+      // Simulate start event
+      act(() => {
+        mockOnArticleDownloadFeedStarted({
+          refreshId: "refresh-1",
+          feedCount: 5,
+          articleCount: 50,
+        });
+      });
+
+      // Simulate complete event
+      act(() => {
+        mockOnArticleDownloadFeedComplete({
+          refreshId: "refresh-1",
+          feedIndex: 2,
+          feedCount: 5,
+          articleCount: 10,
+          articleSuccessCount: 8,
+          articleFailedCount: 2,
+        });
+      });
+
+      expect(result.current.articleDownloadProgress).toEqual({
+        refreshId: "refresh-1",
+        status: "fetching",
+        feedIndex: 2,
+        feedCount: 5,
+        articleCount: 10,
+        articleSuccessCount: 8,
+        articleFailedCount: 2,
+      });
+    });
+
+    it("should mark status as complete when last feed event is received", () => {
+      mockUseAsyncFn.mockReturnValue({
+        data: mockFeeds,
+        loading: false,
+        error: null,
+        runFn: jest.fn(),
+      });
+
+      const { result } = renderHook(useFeedsContext, { wrapper });
+
+      // Simulate start event
+      act(() => {
+        mockOnArticleDownloadFeedStarted({
+          refreshId: "refresh-1",
+          feedCount: 5,
+          articleCount: 50,
+        });
+      });
+
+      // Simulate last feed complete event
+      act(() => {
+        mockOnArticleDownloadFeedComplete({
+          refreshId: "refresh-1",
+          feedIndex: 5,
+          feedCount: 5,
+          articleCount: 10,
+          articleSuccessCount: 10,
+          articleFailedCount: 0,
+        });
+      });
+
+      expect(result.current.articleDownloadProgress?.status).toBe("complete");
+    });
+  });
+
+  describe("feedArticleCacheComplete", () => {
+    it("should initialize with empty completeness map", () => {
+      mockUseAsyncFn.mockReturnValue({
+        data: mockFeeds,
+        loading: false,
+        error: null,
+        runFn: jest.fn(),
+      });
+
+      const { result } = renderHook(useFeedsContext, { wrapper });
+
+      expect(result.current.feedArticleCacheComplete).toEqual({});
+    });
+
+    it("should expose refreshActiveFeedCacheState callback", () => {
+      mockUseAsyncFn.mockReturnValue({
+        data: mockFeeds,
+        loading: false,
+        error: null,
+        runFn: jest.fn(),
+      });
+
+      const { result } = renderHook(useFeedsContext, { wrapper });
+
+      expect(typeof result.current.refreshActiveFeedCacheState).toBe("function");
     });
   });
 });

@@ -7,6 +7,11 @@ class FeedRefreshModule extends NativeModule<FeedRefreshModuleEvents> {
     // Web stub - not implemented for Stage 2 (Android-only)
     return 'Web platform not supported for native feed refresh';
   }
+
+  async clearArticleDownloadJobs(): Promise<void> {
+    // Web stub - no-op on web platform
+    return;
+  }
 }
 
 export default registerWebModule(FeedRefreshModule, 'FeedRefreshModule');

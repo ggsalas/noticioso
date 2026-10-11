@@ -12,7 +12,7 @@ Current Stage 2 storage design: how feeds, refresh generations, and article data
 
 Stage 1 caches (`feed_cache` / `last_full_refresh` / `migration_state`) were never shipped to production; they are cleaned once at startup (see Startup) and never rewritten.
 
-The SQLite baseline schema (version 1) is defined in [`./schema.ts`](./schema.ts).
+The SQLite schema (version 3) is defined in [`./schema.ts`](./schema.ts).
 
 ## Tables
 
@@ -42,6 +42,12 @@ AsyncStorage: @noticioso-feedList  (user feeds; drives which URLs to fetch)
     article_metadata (url PK)  -- GLOBAL by URL
         |
         +--> raw HTML: Paths.cache/article-html/<slug>.html
+
+  Article download jobs (refresh_id association; deleted explicitly during cache clear):
+    article_download_jobs (PK: refresh_id, url)
+      -- per-refresh, per-URL download tracking for the native article downloader
+      -- status: pending | downloading | completed | failed
+      -- indexes on refresh_id, status, url
 ```
 
 ## Refresh lifecycle
@@ -68,7 +74,7 @@ Superseded generations and their cascade-owned children will later be garbage-co
 - Raw HTML is never stored in SQLite or AsyncStorage; it lives on the filesystem under `Paths.cache/article-html/<slug>.html`.
 - `article_metadata` is **global, keyed by URL** — no FK to `refreshes`, because the same article URL is the same article regardless of which generation surfaced it.
 - Metadata is populated by JS on demand when an article is opened.
-- **No native article downloader yet** — the Kotlin module only fetches/parses feeds.
+- **Native article downloader** tracks per-refresh, per-URL download work in `article_download_jobs` (compound PK `refresh_id, url`, FK to `refreshes` with CASCADE). Status: pending → downloading → completed/failed. Used for reconciliation on foreground recovery.
 
 ## Startup
 
@@ -77,9 +83,9 @@ Superseded generations and their cascade-owned children will later be garbage-co
 
 There is **no legacy cache migration** — Stage 1 never shipped, so nothing is migrated; discarded caches are simply rebuilt by fetching.
 
-## Stage 2 scope
+## Stage 2–3 scope
 
-- **Native (Kotlin)** fetches and parses feeds off the JS thread and persists `refreshes`, `feed_snapshots`, `refresh_feeds`, `pending_refresh`, and `last_fetch_completion`.
-- **JS** reads the active generation (`active_refresh` → `feed_snapshots`) and applies the pending refresh via the toast.
-- **Top-5 article preload is disabled** (ranking is still computed for compatibility); it returns in Stage 3 with a native downloader.
-- **Article reading stays on demand**: HTML fetch/extract and `article_metadata` writes happen in JS when an article is opened.
+- **Native (Kotlin)** fetches/parses feeds and then downloads article HTML; it persists refresh snapshots, per-feed status, and per-URL download jobs in SQLite.
+- **JS** reads the active generation and applies a pending refresh only when the user taps the toast.
+- **Top-5 preload is disabled**; article reads remain on-demand in JS and share the same filesystem/metadata cache.
+- The cross-runtime on-demand/native same-URL race is accepted for now; both paths check the shared cache, but there is no global per-URL lock yet.

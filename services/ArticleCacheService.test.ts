@@ -7,9 +7,6 @@ const mockRepository = {
   setMetadata: jest.fn(),
   updateLastAccessed: jest.fn(),
   delete: jest.fn(),
-  count: jest.fn(),
-  getOldestNeverAccessed: jest.fn(),
-  getOldestByLastAccessed: jest.fn(),
 };
 
 const articleCacheService = new ArticleCacheService(
@@ -88,7 +85,6 @@ describe("ArticleCacheService", () => {
         </html>
       `;
 
-      mockRepository.count.mockResolvedValue(0);
       mockRepository.setMetadata.mockResolvedValue(undefined);
 
       await articleCacheService.setHtml("https://example.com/new", mockHtml);

@@ -16,7 +16,7 @@ import {
   JetBrainsMono_700Bold,
   JetBrainsMono_700Bold_Italic,
 } from "@expo-google-fonts/jetbrains-mono";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useColorScheme, ToastAndroid, View, Text, TouchableOpacity } from "react-native";
 import { ThemeProvider as NavigationThemeProvider } from "@react-navigation/native";
 import { DarkTheme, DefaultTheme } from "@/constants/navigationThemes";
@@ -26,6 +26,8 @@ import { PreviousRouteProvider } from "~/providers/PreviousRoute";
 import { useShareIntent } from "expo-share-intent";
 import { isWebUrl } from "@/validators/url";
 import { initializeDatabase } from "@/infrastructure/initializer";
+import FeedRefreshModule from "@/modules/FeedRefreshModule/src/FeedRefreshModule";
+import { AppState, type AppStateStatus } from "react-native";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -53,6 +55,77 @@ export default function RootLayout() {
       .then(() => setDbReady(true))
       .catch((err) => setDbError(err as Error));
   }, []);
+
+  // Subscribe to article download completion events from native module
+  // Events are best-effort notifications; SQLite/file remain source of truth
+  useEffect(() => {
+    if (!dbReady) return;
+
+    const subscription = FeedRefreshModule.addListener(
+      "onArticleDownloadFeedComplete",
+      (event: {
+        refreshId: string;
+        feedUrl: string;
+        feedIndex: number;
+        feedCount: number;
+        articleCount: number;
+        articleSuccessCount: number;
+        articleFailedCount: number;
+      }) => {
+        // Event received - FeedsProvider will update articleDownloadProgress state
+        // No action needed here as events are disposable
+        if (__DEV__) {
+          console.log(`Article download complete for feed ${event.feedIndex}/${event.feedCount}: ${event.feedUrl} (${event.articleSuccessCount}/${event.articleCount} cached, ${event.articleFailedCount} failed)`);
+        }
+      }
+    );
+
+    return () => {
+      subscription.remove();
+    };
+  }, [dbReady]);
+
+  // Reconcile incomplete article downloads on app foreground and initial mount
+  // This handles cases where the app was killed during download or launches directly in active state
+  const didInitialReconcile = useRef(false);
+  useEffect(() => {
+    if (!dbReady) {
+      didInitialReconcile.current = false;
+      return;
+    }
+
+    const triggerReconcile = (reason: string) => {
+      FeedRefreshModule.reconcileArticleDownloads()
+        .then((result: string) => {
+          if (__DEV__) {
+            console.log(`Article download reconciliation (${reason}): ${result}`);
+          }
+        })
+        .catch((err: Error) => {
+          console.warn(`Failed to reconcile article downloads (${reason}):`, err);
+        });
+    };
+
+    // One-time initial reconciliation after db is ready
+    // Handles app launching directly in "active" state where AppState listener won't fire
+    // Native worker queue dedupes against any concurrent reconciliation
+    if (!didInitialReconcile.current) {
+      didInitialReconcile.current = true;
+      triggerReconcile("initial");
+    }
+
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      if (nextAppState === "active") {
+        triggerReconcile("foreground");
+      }
+    };
+
+    const appStateSubscription = AppState.addEventListener("change", handleAppStateChange);
+
+    return () => {
+      appStateSubscription.remove();
+    };
+  }, [dbReady]);
 
   useEffect(() => {
     if ((loaded || error) && (dbReady || dbError)) {

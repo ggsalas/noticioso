@@ -49,9 +49,13 @@ npm run ios
 # Lint
 npm run lint
 
-# Tests
+# Tests (requires Node 22.5+ for the built-in real SQLite test engine)
 npm test
 ```
+
+Infrastructure migration/repository tests use Node's `node:sqlite` against a real
+in-memory SQLite database; the production app still uses `expo-sqlite`. There is no
+hand-written SQL mock in the Jest setup.
 
 For a native dev build without Expo Go (required to debug native behaviour):
 

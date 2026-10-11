@@ -2,8 +2,7 @@ import { articleCacheRepository, ArticleCacheRepository } from "@/infrastructure
 import { Paths, File, Directory } from "expo-file-system";
 import type { ArticleMetadata } from "~/types";
 
-const MAX_ARTICLES = 300;
-const MAX_ARTICLE_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+// Stage 3: MAX_ARTICLES limit removed. Orphan GC deferred to Stage 4.
 
 // Regex patterns for metadata extraction (no DOM parsing)
 function extractHeroImage(html: string): string | undefined {
@@ -93,12 +92,6 @@ export class ArticleCacheService {
   setHtml = async (url: string, html: string): Promise<void> => {
     const now = new Date().toISOString();
 
-    // Make room if at limit
-    const count = await this.articleCacheRepo.count();
-    if (count >= MAX_ARTICLES) {
-      await this.removeOldest();
-    }
-
     // 1. Save FULL HTML to file system (for article viewing)
     try {
       if (!htmlCacheDir.exists) {
@@ -133,11 +126,6 @@ export class ArticleCacheService {
       if (!file.exists) return null;
 
       const html = await file.text();
-
-      // Update lastAccessedAt for LRU
-      const now = new Date().toISOString();
-      await this.articleCacheRepo.updateLastAccessed(url, now);
-
       return html;
     } catch {
       return null;
@@ -147,25 +135,6 @@ export class ArticleCacheService {
   private getFilePath = (url: string): string => {
     const safeName = encodeURIComponent(url.replace(/[^a-zA-Z0-9]/g, "_"));
     return new File(htmlCacheDir, `${safeName}.html`).uri;
-  };
-
-  // Eviction - delete from both file system and database
-  private removeOldest = async (): Promise<void> => {
-    // Priority 1: Articles older than 7 days that were NEVER read
-    const neverReadOld = await this.articleCacheRepo.getOldestNeverAccessed(
-      MAX_ARTICLE_AGE_MS,
-      1,
-    );
-    if (neverReadOld.length > 0) {
-      await this.delete(neverReadOld[0].url);
-      return;
-    }
-
-    // Priority 2: Fallback to LRU
-    const oldest = await this.articleCacheRepo.getOldestByLastAccessed(1);
-    if (oldest.length > 0) {
-      await this.delete(oldest[0].url);
-    }
   };
 
   private delete = async (url: string): Promise<void> => {
@@ -194,6 +163,32 @@ export class ArticleCacheService {
     } catch (error) {
       console.warn("Failed to clear file cache:", error);
     }
+  };
+
+  /**
+   * Get URLs from the provided list that have both metadata row AND final HTML file.
+   * Used for cache completeness checks.
+   */
+  getFullyCachedUrls = async (urls: string[]): Promise<string[]> => {
+    if (urls.length === 0) return [];
+
+    // Get URLs with metadata rows
+    const metadataPresentUrls = await this.articleCacheRepo.getMetadataPresentUrls(urls);
+
+    // Filter by file existence
+    const fullyCachedUrls: string[] = [];
+    for (const url of metadataPresentUrls) {
+      try {
+        const file = new File(this.getFilePath(url));
+        if (file.exists) {
+          fullyCachedUrls.push(url);
+        }
+      } catch {
+        // File check failed, skip this URL
+      }
+    }
+
+    return fullyCachedUrls;
   };
 }
 

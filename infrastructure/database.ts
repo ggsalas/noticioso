@@ -1,19 +1,36 @@
-import * as SQLite from "expo-sqlite";
+import type { SQLiteDatabase } from "expo-sqlite";
 
-// Stable, explicit DB filename - app-private, future Kotlin modules can open same file
+// Stable, explicit DB filename shared by expo-sqlite (JS) and the Kotlin module.
 export const DATABASE_NAME = "noticioso.db";
 
-// Singleton database instance
-let dbInstance: SQLite.SQLiteDatabase | null = null;
+export type DatabaseFactory = () => Promise<SQLiteDatabase>;
 
-export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
+let dbInstance: SQLiteDatabase | null = null;
+let databaseFactoryForTesting: DatabaseFactory | null = null;
+
+export async function getDatabase(): Promise<SQLiteDatabase> {
   if (!dbInstance) {
-    dbInstance = await SQLite.openDatabaseAsync(DATABASE_NAME);
+    if (databaseFactoryForTesting) {
+      dbInstance = await databaseFactoryForTesting();
+    } else {
+      // Load the native Expo module only in the app runtime. Jest injects a real
+      // SQLite test connection through setDatabaseFactoryForTesting().
+      const SQLite = await import("expo-sqlite");
+      dbInstance = await SQLite.openDatabaseAsync(DATABASE_NAME);
+    }
   }
   return dbInstance;
 }
 
-// For testing - reset the singleton
-export function resetDatabaseForTesting(): void {
-  dbInstance = null;
+/** Test-only injection point for a real SQLite connection (for example node:sqlite). */
+export function setDatabaseFactoryForTesting(factory: DatabaseFactory | null): void {
+  databaseFactoryForTesting = factory;
+}
+
+/** Close and reset the current connection between database integration tests. */
+export async function resetDatabaseForTesting(): Promise<void> {
+  if (dbInstance) {
+    await dbInstance.closeAsync();
+    dbInstance = null;
+  }
 }

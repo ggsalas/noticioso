@@ -90,46 +90,37 @@ export class ArticleCacheRepository {
     );
   }
 
-  async getOldestByLastAccessed(limit: number = 1): Promise<ArticleMetadataRow[]> {
-    const db = await getDatabase();
-    return await db.getAllAsync<ArticleMetadataRow>(
-      `SELECT url, hero_image as heroImage, byline, title, excerpt,
-              fetched_at as fetchedAt, last_accessed_at as lastAccessedAt
-       FROM article_metadata
-       ORDER BY last_accessed_at ASC
-       LIMIT ?`,
-      [limit]
-    );
-  }
-
-  async getOldestNeverAccessed(
-    maxAgeMs: number,
-    limit: number = 1
-  ): Promise<ArticleMetadataRow[]> {
-    const db = await getDatabase();
-    const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
-    return await db.getAllAsync<ArticleMetadataRow>(
-      `SELECT url, hero_image as heroImage, byline, title, excerpt,
-              fetched_at as fetchedAt, last_accessed_at as lastAccessedAt
-       FROM article_metadata
-       WHERE fetched_at < ? AND last_accessed_at = fetched_at
-       ORDER BY fetched_at ASC
-       LIMIT ?`,
-      [cutoff, limit]
-    );
-  }
-
-  async count(): Promise<number> {
-    const db = await getDatabase();
-    const row = await db.getFirstAsync<{ count: number }>(
-      "SELECT COUNT(*) as count FROM article_metadata"
-    );
-    return row?.count ?? 0;
-  }
-
   async clear(): Promise<void> {
     const db = await getDatabase();
     await db.runAsync("DELETE FROM article_metadata");
+  }
+
+  /**
+   * Get URLs that have metadata rows from the provided list.
+   * Chunks queries to stay below SQLite bind variable limits.
+   */
+  async getMetadataPresentUrls(urls: string[]): Promise<string[]> {
+    if (urls.length === 0) return [];
+
+    const db = await getDatabase();
+    const presentUrls: string[] = [];
+
+    // SQLite bind limit is typically 999, use chunks of 500 to be safe
+    const CHUNK_SIZE = 500;
+
+    for (let i = 0; i < urls.length; i += CHUNK_SIZE) {
+      const chunk = urls.slice(i, i + CHUNK_SIZE);
+      const placeholders = chunk.map(() => "?").join(",");
+
+      const rows = await db.getAllAsync<{ url: string }>(
+        `SELECT url FROM article_metadata WHERE url IN (${placeholders})`,
+        chunk
+      );
+
+      presentUrls.push(...rows.map(row => row.url));
+    }
+
+    return presentUrls;
   }
 }
 

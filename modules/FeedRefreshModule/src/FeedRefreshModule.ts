@@ -5,6 +5,8 @@ import { FeedRefreshModuleEvents, NativeFeedInput } from './FeedRefreshModule.ty
 
 declare class FeedRefreshModule extends NativeModule<FeedRefreshModuleEvents> {
   refreshFeeds(feeds: NativeFeedInput[]): Promise<string>;
+  reconcileArticleDownloads(): Promise<string>;
+  clearArticleDownloadJobs(): Promise<void>;
 }
 
 // This call loads the native module object from the JSI.

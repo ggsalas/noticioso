@@ -1,4 +1,4 @@
-import { Link, Stack, useRouter } from "expo-router";
+import { Link, Stack, useRouter, useFocusEffect } from "expo-router";
 import { Pressable, Text, StyleSheet, View, ActivityIndicator } from "react-native";
 import { useCallback, useMemo, useState } from "react";
 import { HandleRouterLinkData } from "@/types";
@@ -18,12 +18,15 @@ export default function Feeds() {
     loading,
     error,
     feedArticleCounts,
+    feedArticleCacheComplete,
     updating,
     lastFullRefreshAt,
     shouldShowUpdateToast,
+    articleDownloadProgress,
     refreshAllFeeds,
     refreshAndUpdateToast,
     dismissToast,
+    refreshActiveFeedCacheState,
   } = useFeedsContext();
 
   const getStatusLabel = (status: {
@@ -39,13 +42,22 @@ export default function Feeds() {
     }
   };
 
+  const hasFeedData = !!feeds?.length;
+  const showInitialLoading = !!loading && !hasFeedData;
   const router = useRouter();
   const [resetNavigation, setResetNavigation] = useState(1);
 
+  // Refresh cache completeness state when this route becomes active
+  useFocusEffect(
+    useCallback(() => {
+      refreshActiveFeedCacheState();
+    }, [refreshActiveFeedCacheState])
+  );
+
   const handleNativeRefresh = useCallback(async () => {
-    if (updating) return;
+    if (updating || articleDownloadProgress?.status === "fetching") return;
     await refreshAllFeeds();
-  }, [updating, refreshAllFeeds]);
+  }, [updating, articleDownloadProgress, refreshAllFeeds]);
 
   const previousRoute = usePreviousRoute<{ feed_url: string }>();
   const previousFeedUrl = previousRoute?.params?.feed_url;
@@ -68,17 +80,23 @@ export default function Feeds() {
         ? '<div class="no-new-content"><h3>No content to show.</h3> <p>Swipe down to get updates <br />or add a new feed.</p></div>'
         : visibleFeeds
             ?.map(
-              ({ name, url }: any) => `
-              <div 
-                class="item" 
-                data-route-link="${getRouteLink(url)}" 
-              >
-                <h3 class="title">${name}${feedArticleCounts[url] !== undefined ? ` (${feedArticleCounts[url]})` : ""}</h3>
-              </div>
-            `,
+              ({ name, url }: any) => {
+                const isComplete = feedArticleCacheComplete[url] === true;
+                const circleIndicator = isComplete
+                  ? ` <span style="color: ${colors.text};" title="All articles cached" aria-label="All articles cached">●</span>`
+                  : "";
+                return `
+                <div
+                  class="item"
+                  data-route-link="${getRouteLink(url)}"
+                >
+                  <h3 class="title">${name}${feedArticleCounts[url] !== undefined ? ` (${feedArticleCounts[url]})` : ""}${circleIndicator}</h3>
+                </div>
+              `;
+              },
             )
             .join(""),
-    [visibleFeeds, feedArticleCounts, getRouteLink],
+    [visibleFeeds, feedArticleCounts, feedArticleCacheComplete, getRouteLink, colors.text],
   );
 
   const html = useMemo(
@@ -134,44 +152,56 @@ export default function Feeds() {
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
-                {updating
-                  ? ""
-                  : `Last full update at ${formatLastRefresh(lastFullRefreshAt)}`}
+                {`Last full update at ${formatLastRefresh(lastFullRefreshAt)}`}
               </Text>
             </View>
           ),
-          headerRight: () => (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: sizes.s1 }}>
-              <Pressable
-                style={[style.rightButton, updating && { opacity: 0.5 }]}
-                android_ripple={{ color: colors.textGrey, borderless: true }}
-                onPress={handleNativeRefresh}
-                disabled={!!updating}
-              >
-                {updating ? (
-                  <ActivityIndicator size="small" color={colors.text} />
+          headerRight: () => {
+            const isUpdatingFeeds = !!updating;
+            const isFetchingArticles = articleDownloadProgress?.status === "fetching";
+            const workerLabel = isUpdatingFeeds
+              ? "Updating feeds"
+              : isFetchingArticles
+                ? `Fetching articles ${articleDownloadProgress.feedIndex}/${articleDownloadProgress.feedCount}`
+                : null;
+
+            return (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: sizes.s1 }}>
+                {workerLabel ? (
+                  <View style={[style.rightButton, { flexDirection: "row", alignItems: "center", gap: sizes.s0_50 }]}>
+                    <ActivityIndicator size="small" color={colors.text} />
+                    <Text style={{ color: colors.text, fontSize: fonts.marginP }} numberOfLines={1}>
+                      {workerLabel}
+                    </Text>
+                  </View>
                 ) : (
-                  <MaterialIcons
-                    name="refresh"
-                    size={sizes.s1}
-                    color={colors.text}
-                  />
+                  <Pressable
+                    style={style.rightButton}
+                    android_ripple={{ color: colors.textGrey, borderless: true }}
+                    onPress={handleNativeRefresh}
+                  >
+                    <MaterialIcons
+                      name="refresh"
+                      size={sizes.s1}
+                      color={colors.text}
+                    />
+                  </Pressable>
                 )}
-              </Pressable>
-              <Link href="/config/feedList" asChild>
-                <Pressable
-                  style={style.rightButton}
-                  android_ripple={{ color: colors.textGrey, borderless: true }}
-                >
-                  <MaterialIcons
-                    name="settings"
-                    size={sizes.s1}
-                    color={colors.text}
-                  />
-                </Pressable>
-              </Link>
-            </View>
-          ),
+                <Link href="/config/feedList" asChild>
+                  <Pressable
+                    style={style.rightButton}
+                    android_ripple={{ color: colors.textGrey, borderless: true }}
+                  >
+                    <MaterialIcons
+                      name="settings"
+                      size={sizes.s1}
+                      color={colors.text}
+                    />
+                  </Pressable>
+                </Link>
+              </View>
+            );
+          },
         }}
       />
 
@@ -181,26 +211,13 @@ export default function Feeds() {
         onDismiss={dismissToast}
       />
 
-      {loading && (
+      {showInitialLoading && (
         <Text style={{ color: colors.text, padding: sizes.s1 }}>
-          {getStatusLabel(loading)}
+          {loading ? getStatusLabel(loading) : "Loading..."}
         </Text>
       )}
 
-      {!loading && updating && (
-        <Text
-          style={{
-            color: colors.textGrey,
-            fontSize: fonts.marginP,
-            paddingHorizontal: sizes.s1,
-            paddingBottom: sizes.s1,
-          }}
-        >
-          {getStatusLabel(updating)}
-        </Text>
-      )}
-
-      {((!loading && !feeds) || error) && (
+      {!hasFeedData && !loading && error && (
         <>
           <Text style={style.content}>
             The app has failed to get the feed list
@@ -212,7 +229,7 @@ export default function Feeds() {
         </>
       )}
 
-      {!loading && feeds?.length === 0 && !error && (
+      {feeds?.length === 0 && !loading && !error && (
         <View style={style.contentWrapper}>
           <Text style={style.content}>There are no feeds to show</Text>
           <View style={style.actions}>
@@ -233,7 +250,7 @@ export default function Feeds() {
         </View>
       )}
 
-      {!loading && feeds && feeds.length > 0 && !error && (
+      {hasFeedData && feeds.length > 0 && (
         <HTMLPagesNav
           key={resetNavigation}
           name="feed"

@@ -579,3 +579,221 @@ de Etapa 2, eliminando toda la lógica de migración y fallbacks legacy.
 - Baseline limpio de Etapa 2 en su lugar
 - Cleanup destructivo implementado y probado
 - Listo para continuar con Etapa 3 (Native Article Downloader) cuando se apruebe
+
+---
+
+## 11. Addendum (2026-10-06) — Stage 3 completado: Descargador nativo de artículos
+
+**Estado: Implementación completa, pendiente aprobación manual del usuario**
+
+### 11.1 Implementación completada
+
+**Schema y migración:**
+- Schema v3: Tabla `article_download_jobs` con compound primary key `(refresh_id, url)` para tracking de trabajo por artículo
+- Migración v1→v2→v3: Tabla creada con clave primaria simple, luego migrada a compound key para soportar múltiples refreshes
+- Migración v2→v3: Añadida columna `position` a `refresh_feeds` para preservar orden configurado de feeds
+- `ArticleDownloadJobRepository`: CRUD completo con dedup por compound key
+- **Orden de procesamiento**: Los feeds se procesan en orden de `position ASC` según configurados por el usuario
+
+**Módulo nativo Kotlin:**
+- `ArticleMetadataExtractor.kt`: Extracción de metadata HTML (og:image, twitter:image, author, title, description)
+  - Coincide con semántica de `ArticleCacheService` de JS
+  - Usa regex patterns equivalentes a los de JS
+- `ArticleDownloader.kt`: Descarga con temp file + atomic rename
+  - Temp files en `context.cacheDir/article-html/*.tmp`
+  - Rename atómico al path final (mismo filesystem)
+  - Path final compatible con JS: `encodeURIComponent(url.replace(/[^a-zA-Z0-9]/g, "_"))`
+  - Reconstrucción de metadata si el archivo existe pero falta en SQLite
+- `ArticleDownloadWorker.kt`: Orquestación del trabajo
+  - Dedup de URLs por refresh usando compound key `(refresh_id, url)`
+  - Serial processing por feed (evita race conditions)
+  - Guard anti-duplicado con `AtomicBoolean`
+  - Persiste estado de jobs para recuperación en foreground
+  - **Relevance checks**: Verifica que refresh sigue siendo relevante (applied/ready) durante procesamiento, detiene trabajo si se vuelve superseded
+  - Emite eventos `onArticleDownloadFeedComplete` por feed completada (best-effort, SQLite/file son source of truth)
+- `FeedRefreshModule.kt`: Integración
+  - Inicia descarga automática después de feed refresh (no bloquea toast)
+  - Worker independiente con su propia conexión SQLite
+  - Expone `reconcileArticleDownloads()` para recuperación en foreground e initial mount
+  - **Position persistence**: Escribe `position` en `refresh_feeds` para todas las feeds (success/failed)
+  - **Failed-feed carry-forward**: Copia snapshots de feeds fallidas del refresh activo sin duplicar filas
+
+**JS Integration:**
+- `ArticleDownloadEventSubscriber.ts`: Suscripción a eventos nativos
+- `_layout.tsx`:
+  - Listener de `onArticleDownloadFeedComplete` (best-effort, no bloquea)
+  - **Initial reconciliation**: Llama a `reconcileArticleDownloads()` una vez después de `dbReady` en mount inicial (recupera jobs cuando app lanza directamente en estado activo)
+  - `AppState` listener para reconciliación en foreground (transiciones a "active")
+  - Ref `didInitialReconcile` previene invocaciones duplicadas inicial + state-change
+  - SQLite es source of truth; eventos son notificaciones opcionales
+
+**Remoción de límites:**
+- Eliminado `MAX_ARTICLES = 300` de `ArticleCacheService` (deferred a Stage 4 para GC consciente de referencias)
+- Eliminados métodos LRU de `ArticleCacheRepository`:
+  - `getOldestByLastAccessed()`
+  - `getOldestNeverAccessed()`
+  - `count()`
+- Eliminada lógica de eviction de `setHtml()`
+- `getHtml()` ya no actualiza `lastAccessedAt` (no hay LRU)
+- **Nota histórica**: Stage 2 documentaba migración de AsyncStorage cache a SQLite; esto fue revertido en addendum 10. Stage 3 mantuvo el schema limpio sin migración legacy.
+
+### 11.2 Coordinación JS/Nativo
+
+**Race condition cross-runtime (aceptada):**
+
+**Decisión del usuario (2026-10-06):** Aceptar race condition de baja probabilidad entre descarga nativa y on-demand JS. No implementar locks cross-runtime por ahora.
+
+**Mecanismo actual:**
+- Nativo: Verifica fila en `article_download_jobs` + archivo antes de descargar
+- JS on-demand: Verifica archivo antes de descargar
+- Ambos usan el mismo path/filename scheme
+- Si ambos intentan descargar la misma URL simultáneamente:
+  - Race window muy corto (milisegundos)
+  - Ambas rutas podrían escribir al mismo archivo; el rename nativo publica un HTML completo, pero la carrera JS/native no tiene garantía de serialización.
+  - Metadata puede escribirse más de una vez con el mismo URL key.
+- **Limitación conocida y aceptada:** No hay lock cross-runtime; si la carrera causa corrupción en pruebas reales, se añadirá una coordinación por URL después..
+
+**Relevance checks durante procesamiento:**
+- `isRefreshStillRelevant()` verifica estado del refresh (applied/ready son relevantes, superseded/building no)
+- Durante el procesamiento de artículos, se verifica relevancia antes de cada feed
+- Si un refresh se vuelve superseded mientras se procesa, el worker detiene el trabajo y marca jobs restantes como failed con error_message "Refresh superseded"
+- Esto previene trabajo stale en refreshes obsoletos
+
+### 11.3 Testing
+
+**Tests automatizados (19/19 pasando):**
+- ✅ `infrastructure/migrate.test.ts` (11 tests): Schema v3, compound primary key, position backfill, indexes, idempotence
+- ✅ `infrastructure/ArticleDownloadJobRepository.test.ts` (8 tests): CRUD operations, dedup, status transitions, compound key queries
+- ✅ Full Jest suite: 127 tests pass, including the Stage 3 schema/repository suites
+- ✅ TypeScript compila sin errores
+- ✅ ESLint sin errores
+- ✅ Android build exitoso (`assembleDebug`)
+
+**Fake de Jest mejorado:**
+- Implementado fake persistente en memoria para `expo-sqlite` en entorno de test
+- Resuelve limitación anterior donde tablas no persistían entre `beforeEach` calls
+- Tests ahora validan correctamente migración v1→v2→v3 y operaciones de repositorio
+
+**Tests Kotlin no implementados:**
+- `ArticleMetadataExtractor`: Requeriría Robolectric o emulator para tests de unidad
+- `ArticleDownloader`: Requeriría mocking de filesystem + HTTP
+- `ArticleDownloadWorker`: Requeriría integración completa con DB y filesystem
+- **Decisión:** Deferir a pruebas manuales en dispositivo real
+
+### 11.4 Checklist de pruebas manuales
+
+**Pre-requisitos:**
+- [ ] Android device o emulator configurado
+- [ ] App instalada con `npm run android`
+- [ ] DB limpia (o migración v1→v2→v3 ejecutada)
+
+**Pruebas básicas:**
+- [ ] Trigger refresh de feeds
+- [ ] Verificar que toast aparece inmediatamente (no espera descarga de artículos)
+- [ ] Verificar en logcat que `ArticleDownloadWorker` inicia después del refresh
+- [ ] Esperar a que todos los artículos se descarguen (varios minutos)
+- [ ] Verificar en logcat eventos `onArticleDownloadFeedComplete` por feed (best-effort)
+- [ ] Verificar que feeds se procesan en orden configurado (position ASC)
+
+**Pruebas de integridad:**
+- [ ] Abrir artículo recién descargado → debe cargar instantáneamente (desde cache)
+- [ ] Verificar que metadata (hero image, title, excerpt) se muestra correctamente
+- [ ] Verificar que artículos compartidos vía `shared/[article_url]` funcionan
+- [ ] Verificar que artículos on-demand (no pre-descargados) aún funcionan
+
+**Pruebas de reconciliación:**
+- [ ] Matar la app a mitad de descarga de artículos
+- [ ] Reabrir la app
+- [ ] Verificar en logcat que `reconcileArticleDownloads()` se ejecuta automáticamente en mount inicial
+- [ ] Verificar que artículos pendientes se descargan
+- [ ] Verificar que artículos ya completados no se re-descargan
+- [ ] Background/foreground la app → verificar reconciliación en transición a "active"
+
+**Pruebas de relevancia durante procesamiento:**
+- [ ] Iniciar descarga de artículos
+- [ ] Mientras se descargan, hacer otro refresh (crea nuevo refresh, anterior puede quedar superseded)
+- [ ] Verificar en logcat que worker anterior detecta relevancia y continúa si aún es applied/ready
+- [ ] Verificar que si refresh se vuelve superseded, jobs restantes se marcan failed con "Refresh superseded"
+
+**Pruebas de concurrencia:**
+- [ ] Hacer pull-to-refresh mientras artículos se están descargando
+- [ ] Verificar que solo hay un worker activo (ver logcat)
+- [ ] Verificar que nueva descarga no interfiere con la existente
+- [ ] Verificar que cola de workers serializa por refreshId
+
+**Pruebas de límites:**
+- [ ] Verificar que no hay límite de 300 artículos (MAX_ARTICLES eliminado)
+- [ ] Descargar más de 300 artículos → todos deben persistir
+- [ ] Verificar que no hay eviction LRU (artículos antiguos no se borran)
+
+**Pruebas de recuperación de errores:**
+- [ ] Desactivar WiFi a mitad de descarga
+- [ ] Verificar que artículos fallidos quedan marcados en `article_download_jobs` con status 'failed'
+- [ ] Re-activar WiFi
+- [ ] Verificar que artículos fallidos NO se re-intentan automáticamente (sin retry)
+- [ ] Verificar que se puede hacer un nuevo refresh que re-intente los fallidos
+
+**Pruebas de failed-feed carry-forward:**
+- [ ] Configurar feed que falla (ej: URL inválida)
+- [ ] Hacer refresh
+- [ ] Verificar que snapshot del feed fallido se copia del refresh activo anterior
+- [ ] Verificar que no se duplican filas en `feed_snapshots`
+- [ ] Verificar que `refresh_feeds` tiene entry con status 'failed' y position correcta
+
+### 11.5 Estado actual (2026-10-06)
+
+**Implementación completada:**
+- ✅ Schema v3 con `article_download_jobs` y compound primary key `(refresh_id, url)`
+- ✅ Migración v1→v2→v3 idempotente (retiene datos existentes)
+- ✅ Columna `position` en `refresh_feeds` para orden configurado
+- ✅ Repositorio de jobs con dedup por compound key
+- ✅ Descargador nativo Kotlin (metadata, downloader, worker)
+- ✅ Relevance checks durante procesamiento (detiene trabajo si refresh se vuelve superseded)
+- ✅ Integración con FeedRefreshModule (position writes para todas las feeds, carry-forward sin duplicados)
+- ✅ Remoción de MAX_ARTICLES=300 (deferred a Stage 4 para GC consciente de referencias)
+- ✅ Remoción de LRU eviction
+- ✅ Suscripción a eventos en JS (best-effort, source DB es SQLite)
+- ✅ Initial reconciliation en mount después de dbReady (previene jobs perdidos en launch directo a active)
+- ✅ Foreground reconciliation en transiciones AppState a "active"
+- ✅ Ref para evitar invocaciones duplicadas inicial + state-change
+- ✅ Tests automatizados pasando: 19/19 (11 migrate + 8 repository) + 108 existentes = 127 total
+- ✅ TypeScript compilación exitosa
+- ✅ ESLint sin errores
+- ✅ Android build exitoso
+
+**Pendiente de aprobación manual:**
+- ⏳ Pruebas manuales en dispositivo (ver checklist 11.4)
+- ⏳ Aprobación explícita del usuario para continuar a Etapa 4
+
+**Stage 3 NO avanza automáticamente:**
+- ⚠️ Implementación completa y testeada
+- ⚠️ Pendiente revisión manual del usuario en dispositivo real
+- ⚠️ No se inicia Stage 4 hasta aprobación explícita
+
+**Próxima etapa (Etapa 4) - pendiente aprobación:**
+- GC de huérfanos consciente de referencias (después de apply del toast)
+- Borrar metadata/HTML sin referencias en snapshots activos/pendientes ni jobs activos
+- Completitud de cache: UI/indicador de estado (opcional, puede derivarse de datos existentes)
+- **Nota:** Límite de 300 y LRU ya fueron removidos en Stage 3
+
+---
+
+## 12. Addendum (2026-10-10) — Tests de SQLite con motor real
+
+**Decisión del usuario (2026-10-10):** quitar el simulador SQL manual de Jest y probar
+migraciones/repositorios con SQLite real.
+
+- `jest.setup.js` ya no simula `expo-sqlite` ni interpreta SQL con expresiones regulares.
+- La app sigue usando `expo-sqlite`; `infrastructure/database.ts` lo carga de forma
+  diferida y permite inyectar una conexión solo durante tests.
+- `infrastructure/testing/RealSqliteTestDatabase.ts` adapta el SQLite real integrado
+  de Node (`node:sqlite`) a la interfaz async usada por los repositorios. Las pruebas
+  de schema, constraints, migraciones, PK compuesta y backfill corren sobre una DB
+  `:memory:` real.
+- Los tests de UI/servicios siguen usando mocks de sus dependencias; no simulan el
+  motor SQL.
+- Estas pruebas requieren **Node 22.5 o posterior**. No se añadió una dependencia
+  SQLite de producción ni se cambió el motor de la app.
+- Resultado de validación: Jest **122 tests / 13 suites**, TypeScript y lint pasan;
+  el build Android también pasa. El warning de Node sobre `node:sqlite` experimental
+  es esperado en Node 22.

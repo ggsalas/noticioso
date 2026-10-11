@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { AsyncStorageStatic } from "@react-native-async-storage/async-storage";
 import { articleCacheRepository } from "@/infrastructure/ArticleCacheRepository";
+import FeedRefreshModule from "@/modules/FeedRefreshModule/src/FeedRefreshModule";
 import { refreshRepository } from "@/infrastructure/RefreshRepository";
 import { activeRefreshRepository } from "@/infrastructure/ActiveRefreshRepository";
 import { pendingRefreshRepository } from "@/infrastructure/PendingRefreshRepository";
@@ -59,11 +60,16 @@ export class StorageService {
 
   /**
    * Clear only app-specific caches (keeps user data like feeds list).
-   * Stage 2: Clears SQLite refresh/article data + HTML files.
+   * Stage 3: Clears SQLite refresh/article data + HTML files.
    * Preserves @noticioso-feedList (user data) and never reimports legacy caches.
    */
   async clearCaches(): Promise<void> {
     try {
+      // Clear per-article worker state before clearing refresh data.
+      // article_download_jobs has no enforced FK, so clear it explicitly.
+      // Uses native module to delete rows in the shared DB.
+      await FeedRefreshModule.clearArticleDownloadJobs();
+
       // Clear SQLite refresh data
       await refreshRepository.clear();
       await activeRefreshRepository.clear();
