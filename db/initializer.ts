@@ -1,5 +1,5 @@
 import { getDatabase, resetDatabaseForTesting } from "./database";
-import { runMigrations } from "./migrate";
+import { ensureSchema } from "./ensureSchema";
 import { legacyCacheCleanup } from "./legacy/LegacyCacheCleanup";
 
 // Track initialization state
@@ -7,11 +7,11 @@ let initializationPromise: Promise<void> | null = null;
 let isInitialized = false;
 
 /**
- * Initialize the database with Stage 2 clean baseline.
+ * Initialize the database before anything reads it or the native module runs.
  *
  * Startup ordering:
  * 1. Run one-time legacy cleanup (preserves feedList, removes old caches)
- * 2. Run schema migrations (detects and drops Stage 1 tables if present)
+ * 2. Ensure the current schema (a database with another version is rebuilt)
  * 3. Database is ready for use
  *
  * This function is idempotent and safe to call multiple times.
@@ -36,10 +36,9 @@ export async function initializeDatabase(): Promise<void> {
       // Safe to call multiple times (idempotent)
       await legacyCacheCleanup.run();
 
-      // Step 2: Open database and run schema migrations
-      // If Stage 1 tables exist, they will be dropped and clean baseline created
+      // Step 2: Open the database and ensure the current schema
       await getDatabase();
-      await runMigrations();
+      await ensureSchema();
 
       isInitialized = true;
     } catch (error) {

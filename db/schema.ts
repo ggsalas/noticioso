@@ -1,14 +1,13 @@
-// SQL schema definitions for noticioso.db
+// SQL schema of noticioso.db.
+//
+// There are NO migrations: the database is a cache that the native module can
+// rebuild at any time (the user's feed list lives in AsyncStorage). To change
+// the schema, edit it here and bump SCHEMA_VERSION; on the next start a
+// database with another version is dropped and recreated, and the next refresh
+// fills it again. See db/README.md ("No migrations").
+export const SCHEMA_VERSION = 1;
 
-// Version history:
-//   1 - Clean baseline (refreshes, refresh_feeds, feed_snapshots, active_refresh, pending_refresh, last_fetch_completion, article_metadata)
-//   Stage 1 (feed_cache, last_full_refresh, data_migrations, migration_state) was never in production and is removed
-//   2 - Added article_download_jobs for Stage 3 native article downloader
-//   3 - Changed article_download_jobs primary key to (refresh_id, url) compound key
-//        Added position column to refresh_feeds for feed ordering
-export const SCHEMA_VERSION = 3;
-
-export const CREATE_TABLES_SQL_V1 = `
+export const CREATE_TABLES_SQL = `
 -- Refresh generations table
 -- Tracks each refresh attempt with its state
 CREATE TABLE IF NOT EXISTS refreshes (
@@ -29,6 +28,7 @@ CREATE TABLE IF NOT EXISTS refresh_feeds (
   error_message TEXT,
   items_count INTEGER,
   completed_at TEXT,
+  position INTEGER DEFAULT 0,
   PRIMARY KEY (refresh_id, feed_url),
   FOREIGN KEY (refresh_id) REFERENCES refreshes(id) ON DELETE CASCADE
 );
@@ -81,24 +81,8 @@ CREATE TABLE IF NOT EXISTS article_metadata (
   last_accessed_at TEXT NOT NULL
 );
 
--- Indexes for efficient queries
-CREATE INDEX IF NOT EXISTS idx_refreshes_state ON refreshes(state);
-CREATE INDEX IF NOT EXISTS idx_refreshes_created_at ON refreshes(created_at);
-CREATE INDEX IF NOT EXISTS idx_refresh_feeds_refresh_id ON refresh_feeds(refresh_id);
-CREATE INDEX IF NOT EXISTS idx_feed_snapshots_refresh_id ON feed_snapshots(refresh_id);
-CREATE INDEX IF NOT EXISTS idx_feed_snapshots_feed_url ON feed_snapshots(feed_url);
-CREATE INDEX IF NOT EXISTS idx_article_metadata_last_accessed_at ON article_metadata(last_accessed_at);
-CREATE INDEX IF NOT EXISTS idx_article_metadata_fetched_at ON article_metadata(fetched_at);
-`;
-
-// V2 schema additions (Stage 3)
-// Note: V3 migration changes article_download_jobs primary key to compound (refresh_id, url)
-// and adds position column to refresh_feeds for feed ordering
-export const CREATE_TABLES_SQL_V2 = `
--- Article download jobs: tracks per-URL download work for a refresh
--- Created by native article downloader after feed refresh completes
--- Used for reconciliation on foreground recovery
--- V3: Primary key changed to (refresh_id, url) compound key
+-- Article download jobs: one per (generation, article URL), written by the
+-- native downloader; resumed after process death, failed jobs never retried
 CREATE TABLE IF NOT EXISTS article_download_jobs (
   refresh_id TEXT NOT NULL,
   url TEXT NOT NULL,
@@ -114,7 +98,13 @@ CREATE TABLE IF NOT EXISTS article_download_jobs (
 CREATE INDEX IF NOT EXISTS idx_article_download_jobs_refresh_id ON article_download_jobs(refresh_id);
 CREATE INDEX IF NOT EXISTS idx_article_download_jobs_status ON article_download_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_article_download_jobs_url ON article_download_jobs(url);
-`;
 
-// Combined SQL for fresh installs (V1 + V2 + V3)
-export const CREATE_TABLES_SQL = CREATE_TABLES_SQL_V1 + CREATE_TABLES_SQL_V2;
+-- Indexes for efficient queries
+CREATE INDEX IF NOT EXISTS idx_refreshes_state ON refreshes(state);
+CREATE INDEX IF NOT EXISTS idx_refreshes_created_at ON refreshes(created_at);
+CREATE INDEX IF NOT EXISTS idx_refresh_feeds_refresh_id ON refresh_feeds(refresh_id);
+CREATE INDEX IF NOT EXISTS idx_feed_snapshots_refresh_id ON feed_snapshots(refresh_id);
+CREATE INDEX IF NOT EXISTS idx_feed_snapshots_feed_url ON feed_snapshots(feed_url);
+CREATE INDEX IF NOT EXISTS idx_article_metadata_last_accessed_at ON article_metadata(last_accessed_at);
+CREATE INDEX IF NOT EXISTS idx_article_metadata_fetched_at ON article_metadata(fetched_at);
+`;

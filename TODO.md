@@ -17,6 +17,13 @@ Open follow-ups. Finished work lives in git history and in `docs/architecture.md
 
 ## UI
 
+- [ ] **Empty start needs a toast tap.** With no active generation (new install, after "Clear
+      cache", or after a schema version change rebuilds the database) the first refresh ends as
+      *pending*: the list says "No content to show" until the user taps "Load new available
+      articles", and the header reads "Last full update at" with no time. With nothing on screen
+      there is nothing to protect: apply the first generation automatically, and hide the
+      "Last full update" line when there is none.
+
 - [ ] **Cold-start download progress isn't shown.** The first `onArticleDownloadFeedStarted` can
       be emitted before JS subscribes, so the header shows no "Downloading articles" while the
       initial reconciliation downloads. Downloads work; UI only. Option: on mount, if

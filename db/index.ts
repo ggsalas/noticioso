@@ -1,5 +1,5 @@
 export { getDatabase, resetDatabaseForTesting, DATABASE_NAME } from "./database";
-export { runMigrations, SCHEMA_VERSION } from "./migrate";
+export { ensureSchema, SCHEMA_VERSION } from "./ensureSchema";
 export {
   ArticleMetadataRepository,
   articleMetadataRepository,

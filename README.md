@@ -56,7 +56,7 @@ npm run lint
 npm test
 ```
 
-Database migration/repository tests use Node's `node:sqlite` against a real
+Database schema/repository tests use Node's `node:sqlite` against a real
 in-memory SQLite database; the production app still uses `expo-sqlite`. There is no
 hand-written SQL mock in the Jest setup.
 
@@ -140,8 +140,9 @@ It is the **only writer** of the database and the article files.
   export) and finding a site's feed when adding one.
 - **Renders**: screens, navigation and the paginated reader, which runs inside a
   WebView (`lib/webview/`).
-- **Defines the database structure** (schema and migrations), but does not write
-  content into it.
+- **Defines the database structure** (schema), but does not write content into
+  it. The database is a cache that can always be rebuilt, so it is never
+  migrated: when the schema changes it is recreated and refilled.
 
 Rule of thumb: if the native module already does something, JavaScript does not
 reimplement it — it asks the native module.

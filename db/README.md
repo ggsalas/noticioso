@@ -2,7 +2,7 @@
 
 How feeds, refresh generations and article data are persisted across AsyncStorage, SQLite and the filesystem.
 
-**Who writes what:** the native module (`modules/FeedRefreshModule`) is the only writer of the SQLite tables below and of the article HTML files. This folder owns the schema and migrations (run at startup, before native is used) and READ-only repositories: `RefreshRepository` (active/pending pointers, last fetch), `FeedSnapshotRepository`, `ArticleMetadataRepository`. The whole design is described in `docs/architecture.md`.
+**Who writes what:** the native module (`modules/FeedRefreshModule`) is the only writer of the SQLite tables below and of the article HTML files. This folder owns the schema (ensured at startup, before native is used; there are no migrations, see below) and READ-only repositories: `RefreshRepository` (active/pending pointers, last fetch), `FeedSnapshotRepository`, `ArticleMetadataRepository`. The whole design is described in `docs/architecture.md`.
 
 ## Storage split
 
@@ -12,9 +12,7 @@ How feeds, refresh generations and article data are persisted across AsyncStorag
 | SQLite (`noticioso.db`)                 | Refresh generations, feed payloads, per-feed status, pointers, fetch throttle, article metadata |
 | Filesystem (`Paths.cache/article-html`) | Raw article HTML                                                                                |
 
-Stage 1 caches (`feed_cache` / `last_full_refresh` / `migration_state`) were never shipped to production; they are cleaned once at startup (see Startup) and never rewritten.
-
-The SQLite schema (version 3) is defined in [`./schema.ts`](./schema.ts).
+The SQLite schema is defined in [`./schema.ts`](./schema.ts) and its version is stored in SQLite's `PRAGMA user_version`.
 
 ## Tables
 
@@ -81,7 +79,21 @@ A new feed pass can also replace an unapplied pending generation (it becomes `su
 
 ## Startup
 
-1. **Legacy cleanup** runs once (guarded by an AsyncStorage marker): it preserves `@noticioso-feedList` and removes only the never-in-production Stage 1 caches (legacy AsyncStorage keys, old `article-html` files, Stage 1 tables); if it fails it retries on the next startup.
-2. `migrate.ts` then applies the schema migrations (currently version 3).
+1. **Legacy cleanup** runs once (guarded by an AsyncStorage marker): when upgrading from the released app (`main`, which kept its caches in AsyncStorage) it removes those cache keys and the old `article-html` files, and preserves `@noticioso-feedList`. If it fails it retries on the next startup. Temporary: see `TODO.md`.
+2. `ensureSchema.ts` makes sure the database has the current schema (see "No migrations").
 
-There is **no legacy cache migration** — Stage 1 never shipped, so nothing is migrated; discarded caches are simply rebuilt by fetching.
+## No migrations
+
+The database is **a cache, not a source of truth**. Everything in it (generations, feed snapshots, article metadata, download jobs) is rebuilt by the native module on the next refresh. The only data that cannot be recreated, the user's feed list, lives in AsyncStorage and is never touched by schema changes.
+
+So the schema is not migrated, it is rebuilt:
+
+- `schema.ts` holds the one current schema and `SCHEMA_VERSION`.
+- At startup `ensureSchema()` compares `SCHEMA_VERSION` with `PRAGMA user_version`. Same version: nothing to do. Different version (or a new install): drop every table, create the current schema, store the version.
+- **To change the schema:** edit `schema.ts`, bump `SCHEMA_VERSION`, and update the native SQL if it uses the changed tables. Do not write a migration.
+
+Why: migrations are code that must stay correct forever for data that is worth nothing — it can be downloaded again. Rebuilding is one code path, always tested, and an old or half-migrated database can never break the app.
+
+Cost: on the first start after a schema change the feed list is empty until the refresh finishes (it starts right away, since the last fetch time is gone too). Old article HTML files become orphans and are removed by the garbage collection that runs at app start.
+
+**When this stops being valid:** if the database ever stores something that cannot be downloaded again (read state, favorites, notes...), that data needs real migrations — or its own store, like the feed list.

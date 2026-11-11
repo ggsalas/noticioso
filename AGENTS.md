@@ -38,7 +38,7 @@ components/   UI components
 providers/    React context (FeedsProvider composes the hooks below)
 hooks/        useRefreshLifecycle (refresh cycle + progress + toast), useFeedCacheStatus, ...
 services/     JS logic, one class + singleton each (see below)
-db/           SQLite from JS: schema, migrations, READ-only repositories
+db/           SQLite from JS: schema (no migrations: rebuilt on version change, see db/README.md), READ-only repositories
 lib/          Pure helpers (feedSchema, timeFormatters, url); lib/webview/ = scripts that run INSIDE the WebView
 theme/ types/
 modules/FeedRefreshModule/

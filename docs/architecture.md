@@ -22,7 +22,7 @@ prepared.
 │            FeedContentService     reads the active generation       │
 │            ArticleService         reads articles; if missing → native│
 │            FeedRefreshService     triggers refresh / applies / 1h   │
-│ db/        schema + migrations + READ-ONLY repositories             │
+│ db/        schema + READ-ONLY repositories                          │
 └───────────────────────────────┬─────────────────────────────────────┘
       Native API (the only way to write)
       refreshFeeds · applyPendingRefresh · downloadArticle(url)
@@ -52,8 +52,12 @@ Add or extend a native function instead.
 | SQLite `noticioso.db` | Generations, feed snapshots, per-feed status, active/pending pointers, last fetch, article metadata, download jobs | Native |
 | Files `<cache>/article-html/` | HTML of each article | Native |
 
-The schema and migrations belong to JS (`db/schema.ts`, `db/migrate.ts`) and run
-at startup, before native is used. Tables and relations: `db/README.md`.
+The schema belongs to JS (`db/schema.ts`, `db/ensureSchema.ts`) and is ensured at
+startup, before native is used. **There are no migrations:** the database is a
+cache the native module can rebuild, so a database with another schema version
+is dropped and recreated, and the next refresh fills it again (the feed list
+lives in AsyncStorage and is never affected). Rationale and how to change the
+schema: `db/README.md`, "No migrations".
 
 ## 3. Concepts
 
@@ -154,7 +158,7 @@ components/   providers/   theme/   types/
 hooks/        useRefreshLifecycle (refresh cycle, progress, toast)
               useFeedCacheStatus (counts and ● / ○ indicator), useFeedContent, ...
 services/     JS logic (one class + singleton per file, dependencies via constructor)
-db/           SQLite from JS: schema, migrations, read-only repositories
+db/           SQLite from JS: schema (no migrations), read-only repositories
 lib/          pure helpers; lib/webview/ = scripts that run INSIDE the WebView
 modules/FeedRefreshModule/
   src/                       JS bindings, types, events.ts, web stub
