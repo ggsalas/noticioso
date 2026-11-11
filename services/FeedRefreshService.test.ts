@@ -196,16 +196,30 @@ describe("FeedRefreshService", () => {
   });
 
   describe("shouldRefresh", () => {
-    it("should return false when pending refresh exists", async () => {
+    it("should return true when a stale pending refresh exists (pending does not block)", async () => {
       mockPendingRefreshRepository.get.mockResolvedValue({
         refreshId: "refresh-123",
         readyAt: "2026-01-01T00:00:00.000Z",
       });
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      mockLastFetchCompletionRepository.get.mockResolvedValue(twoHoursAgo);
+
+      const result = await service.shouldRefresh();
+
+      expect(result).toBe(true);
+    });
+
+    it("should return false when a pending refresh exists but last fetch is recent", async () => {
+      mockPendingRefreshRepository.get.mockResolvedValue({
+        refreshId: "refresh-123",
+        readyAt: "2026-01-01T00:00:00.000Z",
+      });
+      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      mockLastFetchCompletionRepository.get.mockResolvedValue(tenMinutesAgo);
 
       const result = await service.shouldRefresh();
 
       expect(result).toBe(false);
-      expect(mockLastFetchCompletionRepository.get).not.toHaveBeenCalled();
     });
 
     it("should return true when no pending and never fetched", async () => {

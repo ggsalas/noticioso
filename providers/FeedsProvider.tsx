@@ -13,12 +13,17 @@ import { feedRefreshService } from "@/services/FeedRefreshService";
 import { feedCacheService } from "@/services/FeedCacheService";
 import { articleCacheService } from "@/services/ArticleCacheService";
 import { activeRefreshRepository, feedSnapshotRepository } from "@/infrastructure";
+import { FEED_REFRESH_QUEUED } from "@/modules/FeedRefreshModule/src/FeedRefreshModule.types";
 import { Feed } from "@/types";
 import { useAsyncFn } from "@/hooks/useAsyncFn";
 import {
   onArticleDownloadFeedStarted,
-  onArticleDownloadFeedComplete
+  onArticleDownloadFeedComplete,
+  onFeedRefreshStarted,
+  onFeedRefreshFinished,
+  onArticleWorkerIdle,
 } from "@/infrastructure/ArticleDownloadEventSubscriber";
+import FeedRefreshModule from "@/modules/FeedRefreshModule";
 
 type FeedsProviderProps = { children: ReactNode };
 
@@ -246,6 +251,35 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
     };
   }, [refreshFeedCacheCompleteness]);
 
+  // Native feed-pass + worker lifecycle (covers queued refreshes JS didn't await)
+  useEffect(() => {
+    const refreshStarted = onFeedRefreshStarted((event) => {
+      setUpdating({ name: "FETCHING", current: 0, total: event.feedCount });
+    });
+
+    const refreshFinished = onFeedRefreshFinished(async () => {
+      setUpdating(null);
+      if (await feedRefreshService.hasPendingRefresh()) {
+        setShouldShowUpdateToast(true);
+      }
+    });
+
+    // Terminal event: emitted whenever the worker drains, including early exits
+    // (superseded generation, errors) that skip the last per-feed event.
+    const workerIdle = onArticleWorkerIdle(() => {
+      setUpdating(null);
+      setArticleDownloadProgress((prev) =>
+        prev?.status === "fetching" ? { ...prev, status: "complete" } : prev,
+      );
+    });
+
+    return () => {
+      refreshStarted.remove();
+      refreshFinished.remove();
+      workerIdle.remove();
+    };
+  }, []);
+
   // Load initial data and check for pending refresh
   useEffect(() => {
     if (!data || data.length === 0) return;
@@ -276,85 +310,71 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
     initData();
   }, [data, loadCachedCounts, computeFeedCacheCompleteness, checkShouldShowToast]);
 
-  // Refresh all feeds using native module (Stage 2 flow)
-  // Does NOT update counts or timestamps - those are updated only when toast is tapped
+  // Refresh all feeds using the native worker.
+  // Never dropped: if the worker is busy (article download / reconciliation) native
+  // queues it and onFeedRefreshStarted/onFeedRefreshFinished report it later.
+  // Deliberately independent of transient UI state so stale closures can't skip it.
+  // Does NOT update counts or timestamps - those change only when the toast is tapped.
   const refreshAllFeeds = useCallback(async () => {
     const feeds = data;
     if (!feeds || feeds.length === 0) return;
 
-    // Don't start a feed pass while the native article worker owns the worker slot.
-    if (updating || articleDownloadProgress?.status === "fetching") return;
-
-    setUpdating({ name: "FETCHING", current: 0, total: feeds.length });
     try {
-      // Call native module to fetch and parse feeds
-      await feedRefreshService.refreshAllFeeds();
+      const result = await feedRefreshService.refreshAllFeeds();
+      if (result === FEED_REFRESH_QUEUED) return;
 
-      // DO NOT update counts or timestamps yet - they come from active refresh
-      // Only update them when toast is tapped (apply pending)
-
-      // Check if READY pending exists and show toast
-      const hasPending = await feedRefreshService.hasPendingRefresh();
-      if (hasPending) {
+      // Direct run: the pass already finished; show the toast if a generation is ready
+      if (await feedRefreshService.hasPendingRefresh()) {
         setShouldShowUpdateToast(true);
       }
-
       previousFeedUrlsRef.current = new Set(feeds.map((f) => f.url));
     } catch (e) {
       console.error("Failed to refresh feeds:", e);
       setActionError("Failed to refresh feeds");
-    } finally {
-      setUpdating(null);
     }
-  }, [data, updating, articleDownloadProgress]);
+  }, [data]);
 
-  // On initial mount, auto-trigger refresh if stale and no pending
+  // Show the toast for a ready generation AND refresh when stale (> 1h).
+  // A pending generation does not block a refresh: old news is useless, so a new
+  // pass supersedes an unapplied pending one (native marks it superseded).
+  const checkToastAndMaybeRefresh = useCallback(async () => {
+    if (await checkShouldShowToast()) {
+      setShouldShowUpdateToast(true);
+    }
+    if (await feedRefreshService.shouldRefresh()) {
+      await refreshAllFeeds();
+    }
+  }, [checkShouldShowToast, refreshAllFeeds]);
+
+  // On initial mount (feed list loaded)
   const initialMountRef = useRef(true);
   useEffect(() => {
     if (!data || data.length === 0 || !initialMountRef.current) return;
-
     initialMountRef.current = false;
+    checkToastAndMaybeRefresh();
+  }, [data, checkToastAndMaybeRefresh]);
 
-    const checkAndRefresh = async () => {
-      const shouldToast = await checkShouldShowToast();
-      if (!shouldToast) {
-        const shouldRefresh = await feedRefreshService.shouldRefresh();
-        if (shouldRefresh) {
-          await refreshAllFeeds();
-        }
-      }
-    };
-
-    checkAndRefresh();
-  }, [data, checkShouldShowToast, refreshAllFeeds]);
-
-  // Trigger refresh on foreground when no READY pending and last fetch > 1 hour
+  // On returning to foreground
   useEffect(() => {
     const handleAppStateChange = async (nextAppState: AppStateStatus) => {
-      if (
-        appStateRef.current.match(/inactive|background/) &&
-        nextAppState === "active"
-      ) {
-        // App came to foreground
-        // First check if there's already a pending refresh
-        const shouldToast = await feedRefreshService.hasPendingRefresh();
-        if (shouldToast) {
-          setShouldShowUpdateToast(true);
-          return;
-        }
-
-        // No pending, check if we should refresh
-        const shouldRefresh = await feedRefreshService.shouldRefresh();
-        if (shouldRefresh) {
-          await refreshAllFeeds();
-        }
-      }
+      const cameToForeground =
+        appStateRef.current.match(/inactive|background/) && nextAppState === "active";
       appStateRef.current = nextAppState;
+      if (!cameToForeground) return;
+
+      // Safety net for events lost while JS was paused: if native is idle,
+      // no feed pass or article download can be in progress.
+      if (!FeedRefreshModule.isWorkerBusy()) {
+        setUpdating(null);
+        setArticleDownloadProgress(null);
+      }
+
+      await checkToastAndMaybeRefresh();
     };
 
     const subscription = AppState.addEventListener("change", handleAppStateChange);
     return () => subscription.remove();
-  }, [refreshAllFeeds]);
+  }, [checkToastAndMaybeRefresh]);
 
   const dismissToast = useCallback(() => {
     setShouldShowUpdateToast(false);

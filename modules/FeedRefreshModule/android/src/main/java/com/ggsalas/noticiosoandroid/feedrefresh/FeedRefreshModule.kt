@@ -12,6 +12,7 @@ import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import org.xmlpull.v1.XmlPullParser
 
@@ -48,223 +49,82 @@ data class FeedData(
 )
 
 class FeedRefreshModule : Module() {
-    // Single native worker slot - gates feed refresh, article downloads, and reconciliation
-    // Only one of these operations can be active at a time
-    private val nativeWorkerSlot = AtomicBoolean(false)
-    private val dbLock = AtomicReference<SQLiteDatabase?>()
-
-    // Module-level article worker queue to serialize refreshIds and reconciliation
-    private sealed class ArticleWorkerTask {
-        data class Download(val refreshId: String) : ArticleWorkerTask()
-        object Reconcile : ArticleWorkerTask()
+    companion object {
+        // Returned by refreshFeeds when the refresh was queued behind running work
+        const val FEED_REFRESH_QUEUED = "Feed refresh queued"
     }
-    private val articleWorkerQueue = java.util.concurrent.ConcurrentLinkedQueue<ArticleWorkerTask>()
-    // Prevents multiple drain loops from running concurrently on the executor
-    private val articleProcessingActive = AtomicBoolean(false)
-    private val articleWorkerExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+
+    // Single native worker: ONE serial executor runs every task (feed refresh, article
+    // downloads, reconciliation), so only one of them is active at a time.
+    // `activeTaskCount` counts submitted-but-unfinished tasks; the worker is busy while > 0.
+    // When it drops to 0 we emit `onArticleWorkerIdle` — the guaranteed terminal event JS
+    // relies on to clear transient progress UI (per-feed events may be skipped on early exits).
+    private val workerExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val activeTaskCount = AtomicInteger(0)
+
+    // Dedup: at most one feed refresh / reconciliation waiting in the executor queue.
+    // A queued feed refresh always runs with the most recent feed list requested.
+    private val feedRefreshQueued = AtomicBoolean(false)
+    private val latestRequestedFeeds = AtomicReference<List<Map<String, Any>>?>(null)
+    private val reconcileQueued = AtomicBoolean(false)
 
     override fun definition() = ModuleDefinition {
         Name("FeedRefreshModule")
 
-        // Events for article download progress
-        Events("onArticleDownloadFeedStarted", "onArticleDownloadFeedComplete")
+        Events(
+            "onArticleDownloadFeedStarted",
+            "onArticleDownloadFeedComplete",
+            "onFeedRefreshStarted",
+            "onFeedRefreshFinished",
+            "onArticleWorkerIdle"
+        )
 
+        /**
+         * Fetch + parse all feeds into a new generation, then download its articles.
+         * - Worker idle: runs now; resolves with the feed-pass summary.
+         * - Worker busy: the refresh is queued (never dropped) and resolves with
+         *   FEED_REFRESH_QUEUED immediately. Completion arrives via `onFeedRefreshFinished`.
+         */
         AsyncFunction("refreshFeeds") { feeds: List<Map<String, Any>> ->
-            if (!nativeWorkerSlot.compareAndSet(false, true)) {
-                return@AsyncFunction "Feed refresh already in progress"
+            val context = appContext.reactContext ?: return@AsyncFunction "No context"
+            latestRequestedFeeds.set(feeds)
+
+            if (!feedRefreshQueued.compareAndSet(false, true)) {
+                // One is already waiting; it will pick up the latest feed list.
+                return@AsyncFunction FEED_REFRESH_QUEUED
             }
 
-            var db: SQLiteDatabase? = null
-            var slotTransferred = false
-            try {
-                val context = appContext.reactContext ?: run {
-                    nativeWorkerSlot.set(false)
-                    return@AsyncFunction "No context"
-                }
-                db = getDatabase(context)
-                dbLock.set(db)
-
-                val refreshId = UUID.randomUUID().toString()
-                val createdAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
-                    timeZone = TimeZone.getTimeZone("UTC")
-                }.format(Date())
-
-                // Create refresh record
-                db.execSQL(
-                    "INSERT INTO refreshes (id, state, created_at) VALUES (?, 'building', ?)",
-                    arrayOf(refreshId, createdAt)
-                )
-
-                var successCount = 0
-                var failureCount = 0
-                val failedFeedUrls = mutableListOf<String>()
-
-                for ((position, feedMap) in feeds.withIndex()) {
-                    try {
-                        val feed = Feed(
-                            id = feedMap["id"] as? String ?: continue,
-                            name = feedMap["name"] as? String ?: continue,
-                            url = feedMap["url"] as? String ?: continue,
-                            oldestArticle = (feedMap["oldestArticle"] as? Number)?.toInt() ?: 7,
-                            lang = feedMap["lang"] as? String ?: "en"
-                        )
-
-                        val feedData = fetchAndParseFeed(feed)
-                        if (feedData != null) {
-                            // Save snapshot
-                            val dataJson = serializeFeedData(feedData)
-                            val cachedAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
-                                timeZone = TimeZone.getTimeZone("UTC")
-                            }.format(Date())
-
-                            db.execSQL(
-                                "INSERT INTO feed_snapshots (refresh_id, feed_url, data, cached_at) VALUES (?, ?, ?, ?)",
-                                arrayOf(refreshId, feed.url, dataJson, cachedAt)
-                            )
-
-                            // Record success with position
-                            db.execSQL(
-                                "INSERT INTO refresh_feeds (refresh_id, feed_url, status, items_count, position, completed_at) VALUES (?, ?, 'success', ?, ?, ?)",
-                                arrayOf(refreshId, feed.url, feedData.channel.item.size, position, cachedAt)
-                            )
-
-                            successCount++
-                        } else {
-                            // Record failure with position
-                            val failedAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
-                                timeZone = TimeZone.getTimeZone("UTC")
-                            }.format(Date())
-
-                            db.execSQL(
-                                "INSERT INTO refresh_feeds (refresh_id, feed_url, status, error_message, position, completed_at) VALUES (?, ?, 'failed', ?, ?, ?)",
-                                arrayOf(refreshId, feed.url, "Failed to fetch or parse feed", position, failedAt)
-                            )
-
-                            failedFeedUrls.add(feed.url)
-                            failureCount++
-                        }
-                    } catch (e: Exception) {
-                        // Record exception with position
-                        val feedUrl = feedMap["url"] as? String ?: "unknown"
-                        val failedAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
-                            timeZone = TimeZone.getTimeZone("UTC")
-                        }.format(Date())
-
-                        db.execSQL(
-                            "INSERT INTO refresh_feeds (refresh_id, feed_url, status, error_message, position, completed_at) VALUES (?, ?, 'failed', ?, ?, ?)",
-                            arrayOf(refreshId, feedUrl, e.message ?: "Unknown error", position, failedAt)
-                        )
-
-                        failedFeedUrls.add(feedUrl)
-                        failureCount++
-                    }
-                }
-
-                // Carry forward last-good snapshots for failed feeds
-                if (failedFeedUrls.isNotEmpty()) {
-                    // Get the current active refresh ID
-                    val activeCursor = db.rawQuery(
-                        "SELECT refresh_id FROM active_refresh WHERE id = 1",
-                        null
-                    )
-                    if (activeCursor.moveToFirst()) {
-                        val activeRefreshId = activeCursor.getString(0)
-                        activeCursor.close()
-
-                        // For each failed feed, copy snapshot from active refresh (if not already present)
-                        for (feedUrl in failedFeedUrls) {
-                            // Check if snapshot already exists for this refresh+feed
-                            val existsCursor = db.rawQuery(
-                                "SELECT COUNT(*) FROM feed_snapshots WHERE refresh_id = ? AND feed_url = ?",
-                                arrayOf(refreshId, feedUrl)
-                            )
-                            val alreadyExists = existsCursor.use {
-                                it.moveToFirst() && it.getInt(0) > 0
-                            }
-
-                            if (!alreadyExists) {
-                                val snapshotCursor = db.rawQuery(
-                                    "SELECT data, cached_at FROM feed_snapshots WHERE refresh_id = ? AND feed_url = ?",
-                                    arrayOf(activeRefreshId, feedUrl)
-                                )
-                                if (snapshotCursor.moveToFirst()) {
-                                    val data = snapshotCursor.getString(0)
-                                    val cachedAt = snapshotCursor.getString(1)
-                                    snapshotCursor.close()
-
-                                    // Copy snapshot to new refresh
-                                    db.execSQL(
-                                        "INSERT INTO feed_snapshots (refresh_id, feed_url, data, cached_at) VALUES (?, ?, ?, ?)",
-                                        arrayOf(refreshId, feedUrl, data, cachedAt)
-                                    )
-                                } else {
-                                    snapshotCursor.close()
-                                }
-                            }
-                        }
-                    } else {
-                        activeCursor.close()
-                    }
-                }
-
-                // Mark refresh as ready
-                val completedAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
-                    timeZone = TimeZone.getTimeZone("UTC")
-                }.format(Date())
-
-                db.execSQL(
-                    "UPDATE refreshes SET state = 'ready', completed_at = ? WHERE id = ?",
-                    arrayOf(completedAt, refreshId)
-                )
-
-                // Set as pending refresh
-                db.execSQL(
-                    "INSERT OR REPLACE INTO pending_refresh (id, refresh_id, ready_at) VALUES (1, ?, ?)",
-                    arrayOf(refreshId, completedAt)
-                )
-
-                // Update last fetch completion
-                db.execSQL(
-                    "INSERT OR REPLACE INTO last_fetch_completion (id, completed_at) VALUES (1, ?)",
-                    arrayOf(completedAt)
-                )
-
-                // Transfer native worker slot to article processing
-                // The slot stays held by the article queue processor
-                enqueueAndProcess(ArticleWorkerTask.Download(refreshId), context)
-                slotTransferred = true
-
-                "$successCount feeds downloaded successfully, $failureCount failed"
-            } catch (e: Exception) {
-                if (!slotTransferred) {
-                    nativeWorkerSlot.set(false)
-                }
-                "Error: ${e.message}"
-            } finally {
-                dbLock.set(null)
-                db?.close()
+            val wasBusy = activeTaskCount.get() > 0
+            val future = submitTask(context) {
+                feedRefreshQueued.set(false)
+                val latest = latestRequestedFeeds.getAndSet(null) ?: emptyList()
+                runFeedRefresh(latest, context)
             }
+
+            if (wasBusy) FEED_REFRESH_QUEUED else (future.get() ?: "No result")
+        }
+
+        // Synchronous check used by JS as a safety net for lost events
+        Function("isWorkerBusy") {
+            activeTaskCount.get() > 0
         }
 
         // Function to trigger reconciliation of incomplete article downloads
         AsyncFunction("reconcileArticleDownloads") { ->
             val context = appContext.reactContext ?: return@AsyncFunction "No context"
 
-            try {
-                // Enqueue reconciliation task
-                articleWorkerQueue.offer(ArticleWorkerTask.Reconcile)
-
-                if (nativeWorkerSlot.compareAndSet(false, true)) {
-                    // No work was active - acquire slot and start processing
-                    ensureArticleProcessingRunning(context)
-                    "Reconciliation started"
-                } else {
-                    // Work is already active - our task will be picked up by existing processing
-                    "Reconciliation enqueued"
-                }
-            } catch (e: Exception) {
-                "Error: ${e.message}"
+            if (!reconcileQueued.compareAndSet(false, true)) {
+                return@AsyncFunction "Reconciliation already queued"
             }
+            val wasBusy = activeTaskCount.get() > 0
+            submitTask(context) {
+                reconcileQueued.set(false)
+                android.util.Log.i("FeedRefreshModule", "Processing reconciliation")
+                val result = ArticleDownloadWorker(context, this@FeedRefreshModule).reconcileIncompleteJobs()
+                android.util.Log.i("FeedRefreshModule", "Reconciliation complete: $result")
+                result
+            }
+            if (wasBusy) "Reconciliation enqueued" else "Reconciliation started"
         }
 
         // Function to clear all article download jobs (used by StorageService.clearCaches)
@@ -272,86 +132,244 @@ class FeedRefreshModule : Module() {
             val context = appContext.reactContext ?: return@AsyncFunction "No context"
             var db: SQLiteDatabase? = null
             try {
-                db = getDatabase(context)
-                db.execSQL("DELETE FROM article_download_jobs")
-                android.util.Log.i("FeedRefreshModule", "Cleared all article download jobs")
+            db = getDatabase(context)
+            db.execSQL("DELETE FROM article_download_jobs")
+            android.util.Log.i("FeedRefreshModule", "Cleared all article download jobs")
             } catch (e: Exception) {
-                android.util.Log.e("FeedRefreshModule", "Failed to clear article download jobs", e)
-                throw e
+            android.util.Log.e("FeedRefreshModule", "Failed to clear article download jobs", e)
+            throw e
             } finally {
-                db?.close()
+            db?.close()
             }
         }
     }
 
     /**
-     * Enqueue a task and ensure processing is running.
-     * Caller must have already acquired nativeWorkerSlot.
+     * Submit a task to the serial worker. The busy counter is incremented before
+     * submission and decremented after the task (success or failure), so a task that
+     * submits follow-up work (feed refresh -> article download) never lets it hit 0 in between.
      */
-    private fun enqueueAndProcess(task: ArticleWorkerTask, context: Context) {
-        articleWorkerQueue.offer(task)
-        ensureArticleProcessingRunning(context)
-    }
-
-    /**
-     * Start article processing on the executor if not already running.
-     * Caller must have already acquired nativeWorkerSlot.
-     * The drain loop holds the slot until the queue is fully drained.
-     */
-    private fun ensureArticleProcessingRunning(context: Context) {
-        if (!articleProcessingActive.compareAndSet(false, true)) {
-            // Already processing, queued items will be picked up
-            return
-        }
-
-        articleWorkerExecutor.submit {
+    private fun submitTask(
+        context: Context,
+        task: () -> String
+    ): java.util.concurrent.Future<String?> {
+        activeTaskCount.incrementAndGet()
+        return workerExecutor.submit<String?> {
             try {
-                while (true) {
-                    val task = articleWorkerQueue.poll()
-                    if (task == null) {
-                        // Queue empty - release slot and check for race
-                        nativeWorkerSlot.set(false)
-                        // Try to re-acquire to handle race with enqueue
-                        if (!nativeWorkerSlot.compareAndSet(false, true)) {
-                            // Someone else acquired, they'll handle it
-                            break
-                        }
-                        // We re-acquired - check if anything was enqueued
-                        if (articleWorkerQueue.isNotEmpty()) {
-                            continue // process them
-                        }
-                        // Nothing to do - release for real
-                        nativeWorkerSlot.set(false)
-                        break
-                    }
-
-                    when (task) {
-                        is ArticleWorkerTask.Download -> {
-                            android.util.Log.i("FeedRefreshModule", "Processing article download for refresh ${task.refreshId}")
-                            try {
-                                val worker = ArticleDownloadWorker(context, this@FeedRefreshModule)
-                                val result = worker.downloadArticlesForRefresh(task.refreshId)
-                                android.util.Log.i("FeedRefreshModule", "Article download complete for refresh ${task.refreshId}: $result")
-                            } catch (e: Exception) {
-                                android.util.Log.e("FeedRefreshModule", "Article download failed for refresh ${task.refreshId}", e)
-                            }
-                        }
-                        is ArticleWorkerTask.Reconcile -> {
-                            android.util.Log.i("FeedRefreshModule", "Processing reconciliation")
-                            try {
-                                val worker = ArticleDownloadWorker(context, this@FeedRefreshModule)
-                                val result = worker.reconcileIncompleteJobs()
-                                android.util.Log.i("FeedRefreshModule", "Reconciliation complete: $result")
-                            } catch (e: Exception) {
-                                android.util.Log.e("FeedRefreshModule", "Reconciliation failed", e)
-                            }
-                        }
-                    }
-                }
+            task()
+            } catch (e: Exception) {
+            android.util.Log.e("FeedRefreshModule", "Worker task failed", e)
+            "Error: ${e.message}"
             } finally {
-                articleProcessingActive.set(false)
+            if (activeTaskCount.decrementAndGet() == 0) {
+                emitEvent("onArticleWorkerIdle", emptyMap())
+            }
             }
         }
+    }
+
+    private fun submitArticleDownload(refreshId: String, context: Context) {
+        submitTask(context) {
+            android.util.Log.i("FeedRefreshModule", "Processing article download for refresh $refreshId")
+            val result = ArticleDownloadWorker(context, this@FeedRefreshModule).downloadArticlesForRefresh(refreshId)
+            android.util.Log.i("FeedRefreshModule", "Article download complete for refresh $refreshId: $result")
+            result
+        }
+    }
+
+    private fun emitEvent(name: String, body: Map<String, Any?>) {
+        try {
+            sendEvent(name, body)
+        } catch (e: Exception) {
+            // Events are best-effort; SQLite + filesystem are the source of truth
+        }
+    }
+
+    /**
+     * Runs ON the worker thread. Builds a new READY generation, makes it the pending
+     * refresh (superseding any previous unapplied pending), then queues its article download.
+     */
+    private fun runFeedRefresh(feeds: List<Map<String, Any>>, context: Context): String {
+        if (feeds.isEmpty()) return "No feeds configured"
+
+        emitEvent("onFeedRefreshStarted", mapOf("feedCount" to feeds.size))
+        var db: SQLiteDatabase? = null
+        var refreshIdForEvent: String? = null
+        var result = "Error: unknown"
+        try {
+            db = getDatabase(context)
+
+            val refreshId = UUID.randomUUID().toString()
+            val createdAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+                timeZone = TimeZone.getTimeZone("UTC")
+            }.format(Date())
+
+            // Create refresh record
+            db.execSQL(
+                "INSERT INTO refreshes (id, state, created_at) VALUES (?, 'building', ?)",
+                arrayOf(refreshId, createdAt)
+            )
+
+            var successCount = 0
+            var failureCount = 0
+            val failedFeedUrls = mutableListOf<String>()
+
+            for ((position, feedMap) in feeds.withIndex()) {
+                try {
+                    val feed = Feed(
+                        id = feedMap["id"] as? String ?: continue,
+                        name = feedMap["name"] as? String ?: continue,
+                        url = feedMap["url"] as? String ?: continue,
+                        oldestArticle = (feedMap["oldestArticle"] as? Number)?.toInt() ?: 7,
+                        lang = feedMap["lang"] as? String ?: "en"
+                    )
+
+                    val feedData = fetchAndParseFeed(feed)
+                    if (feedData != null) {
+                        // Save snapshot
+                        val dataJson = serializeFeedData(feedData)
+                        val cachedAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+                            timeZone = TimeZone.getTimeZone("UTC")
+                        }.format(Date())
+
+                        db.execSQL(
+                            "INSERT INTO feed_snapshots (refresh_id, feed_url, data, cached_at) VALUES (?, ?, ?, ?)",
+                            arrayOf(refreshId, feed.url, dataJson, cachedAt)
+                        )
+
+                        // Record success with position
+                        db.execSQL(
+                            "INSERT INTO refresh_feeds (refresh_id, feed_url, status, items_count, position, completed_at) VALUES (?, ?, 'success', ?, ?, ?)",
+                            arrayOf(refreshId, feed.url, feedData.channel.item.size, position, cachedAt)
+                        )
+
+                        successCount++
+                    } else {
+                        // Record failure with position
+                        val failedAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+                            timeZone = TimeZone.getTimeZone("UTC")
+                        }.format(Date())
+
+                        db.execSQL(
+                            "INSERT INTO refresh_feeds (refresh_id, feed_url, status, error_message, position, completed_at) VALUES (?, ?, 'failed', ?, ?, ?)",
+                            arrayOf(refreshId, feed.url, "Failed to fetch or parse feed", position, failedAt)
+                        )
+
+                        failedFeedUrls.add(feed.url)
+                        failureCount++
+                    }
+                } catch (e: Exception) {
+                    // Record exception with position
+                    val feedUrl = feedMap["url"] as? String ?: "unknown"
+                    val failedAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+                        timeZone = TimeZone.getTimeZone("UTC")
+                    }.format(Date())
+
+                    db.execSQL(
+                        "INSERT INTO refresh_feeds (refresh_id, feed_url, status, error_message, position, completed_at) VALUES (?, ?, 'failed', ?, ?, ?)",
+                        arrayOf(refreshId, feedUrl, e.message ?: "Unknown error", position, failedAt)
+                    )
+
+                    failedFeedUrls.add(feedUrl)
+                    failureCount++
+                }
+            }
+
+            // Carry forward last-good snapshots for failed feeds
+            if (failedFeedUrls.isNotEmpty()) {
+                // Get the current active refresh ID
+                val activeCursor = db.rawQuery(
+                    "SELECT refresh_id FROM active_refresh WHERE id = 1",
+                    null
+                )
+                if (activeCursor.moveToFirst()) {
+                    val activeRefreshId = activeCursor.getString(0)
+                    activeCursor.close()
+
+                    // For each failed feed, copy snapshot from active refresh (if not already present)
+                    for (feedUrl in failedFeedUrls) {
+                        // Check if snapshot already exists for this refresh+feed
+                        val existsCursor = db.rawQuery(
+                            "SELECT COUNT(*) FROM feed_snapshots WHERE refresh_id = ? AND feed_url = ?",
+                            arrayOf(refreshId, feedUrl)
+                        )
+                        val alreadyExists = existsCursor.use {
+                            it.moveToFirst() && it.getInt(0) > 0
+                        }
+
+                        if (!alreadyExists) {
+                            val snapshotCursor = db.rawQuery(
+                                "SELECT data, cached_at FROM feed_snapshots WHERE refresh_id = ? AND feed_url = ?",
+                                arrayOf(activeRefreshId, feedUrl)
+                            )
+                            if (snapshotCursor.moveToFirst()) {
+                                val data = snapshotCursor.getString(0)
+                                val cachedAt = snapshotCursor.getString(1)
+                                snapshotCursor.close()
+
+                                // Copy snapshot to new refresh
+                                db.execSQL(
+                                    "INSERT INTO feed_snapshots (refresh_id, feed_url, data, cached_at) VALUES (?, ?, ?, ?)",
+                                    arrayOf(refreshId, feedUrl, data, cachedAt)
+                                )
+                            } else {
+                                snapshotCursor.close()
+                            }
+                        }
+                    }
+                } else {
+                    activeCursor.close()
+                }
+            }
+
+            // Mark refresh as ready
+            val completedAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+                timeZone = TimeZone.getTimeZone("UTC")
+            }.format(Date())
+
+            db.execSQL(
+                "UPDATE refreshes SET state = 'ready', completed_at = ? WHERE id = ?",
+                arrayOf(completedAt, refreshId)
+            )
+
+            // Supersede a previous unapplied pending generation (user rule: stale
+            // news is useless, a fresh refresh replaces an old pending one). Its
+            // in-flight article jobs stop via isRefreshStillRelevant().
+            db.execSQL(
+                """UPDATE refreshes SET state = 'superseded', superseded_at = ?
+                   WHERE id = (SELECT refresh_id FROM pending_refresh WHERE id = 1) AND id != ?""",
+                arrayOf(completedAt, refreshId)
+            )
+
+            // Set as pending refresh
+            db.execSQL(
+                "INSERT OR REPLACE INTO pending_refresh (id, refresh_id, ready_at) VALUES (1, ?, ?)",
+                arrayOf(refreshId, completedAt)
+            )
+
+            // Update last fetch completion
+            db.execSQL(
+                "INSERT OR REPLACE INTO last_fetch_completion (id, completed_at) VALUES (1, ?)",
+                arrayOf(completedAt)
+            )
+
+            refreshIdForEvent = refreshId
+
+            // Queue the article download (runs right after this task on the serial worker)
+            submitArticleDownload(refreshId, context)
+
+            result = "$successCount feeds downloaded successfully, $failureCount failed"
+        } catch (e: Exception) {
+            android.util.Log.e("FeedRefreshModule", "Feed refresh failed", e)
+            result = "Error: ${e.message}"
+        } finally {
+            db?.close()
+            emitEvent(
+                "onFeedRefreshFinished",
+                mapOf("refreshId" to refreshIdForEvent, "result" to result)
+            )
+        }
+        return result
     }
 
     private fun getDatabase(context: Context): SQLiteDatabase {

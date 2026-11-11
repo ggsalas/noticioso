@@ -92,15 +92,12 @@ export class FeedRefreshService {
 
   /**
    * Check if feeds are stale and should be refreshed.
-   * Stale threshold: 1 hour.
+   * Stale threshold: 1 hour since the last completed feed pass.
+   *
+   * An unapplied pending generation does NOT block a refresh: old news is useless,
+   * so a new pass replaces it (native marks the previous pending as superseded).
    */
   async shouldRefresh(): Promise<boolean> {
-    // Don't refresh if pending exists
-    const hasPending = await this.hasPendingRefresh();
-    if (hasPending) {
-      return false;
-    }
-
     // Check last fetch completion
     const lastFetch = await lastFetchCompletionRepository.get();
     if (!lastFetch) {

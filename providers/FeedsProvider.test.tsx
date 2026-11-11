@@ -72,6 +72,9 @@ jest.mock("@/services/FeedRefreshService", () => ({
 // Mock ArticleDownloadEventSubscriber to control event emission
 const mockOnArticleDownloadFeedStarted = jest.fn();
 const mockOnArticleDownloadFeedComplete = jest.fn();
+const mockOnFeedRefreshStarted = jest.fn();
+const mockOnFeedRefreshFinished = jest.fn();
+const mockOnArticleWorkerIdle = jest.fn();
 jest.mock("@/infrastructure/ArticleDownloadEventSubscriber", () => ({
   onArticleDownloadFeedStarted: (callback: any) => {
     mockOnArticleDownloadFeedStarted.mockImplementation(callback);
@@ -79,6 +82,18 @@ jest.mock("@/infrastructure/ArticleDownloadEventSubscriber", () => ({
   },
   onArticleDownloadFeedComplete: (callback: any) => {
     mockOnArticleDownloadFeedComplete.mockImplementation(callback);
+    return { remove: jest.fn() };
+  },
+  onFeedRefreshStarted: (callback: any) => {
+    mockOnFeedRefreshStarted.mockImplementation(callback);
+    return { remove: jest.fn() };
+  },
+  onFeedRefreshFinished: (callback: any) => {
+    mockOnFeedRefreshFinished.mockImplementation(callback);
+    return { remove: jest.fn() };
+  },
+  onArticleWorkerIdle: (callback: any) => {
+    mockOnArticleWorkerIdle.mockImplementation(callback);
     return { remove: jest.fn() };
   },
 }));
@@ -557,6 +572,86 @@ describe("FeedsProvider", () => {
       const { result } = renderHook(useFeedsContext, { wrapper });
 
       expect(typeof result.current.refreshActiveFeedCacheState).toBe("function");
+    });
+  });
+
+  describe("refresh triggers and native worker lifecycle", () => {
+    const { feedRefreshService: mockRefreshService } = jest.requireMock(
+      "@/services/FeedRefreshService",
+    );
+
+    beforeEach(() => {
+      mockUseAsyncFn.mockReturnValue({
+        data: mockFeeds,
+        loading: false,
+        error: null,
+        runFn: jest.fn(),
+      });
+    });
+
+    afterEach(() => {
+      mockRefreshService.hasPendingRefresh.mockResolvedValue(false);
+      mockRefreshService.shouldRefresh.mockResolvedValue(false);
+      mockRefreshService.refreshAllFeeds.mockReset();
+    });
+
+    it("refreshes on mount when stale even if an unapplied pending generation exists", async () => {
+      mockRefreshService.hasPendingRefresh.mockResolvedValue(true);
+      mockRefreshService.shouldRefresh.mockResolvedValue(true);
+      mockRefreshService.refreshAllFeeds.mockResolvedValue("3 feeds downloaded successfully, 0 failed");
+
+      const { result } = renderHook(useFeedsContext, { wrapper });
+
+      await waitFor(() => expect(mockRefreshService.refreshAllFeeds).toHaveBeenCalledTimes(1));
+      expect(result.current.shouldShowUpdateToast).toBe(true);
+    });
+
+    it("still requests a refresh while article progress is fetching (native queues it)", async () => {
+      const { result } = renderHook(useFeedsContext, { wrapper });
+
+      act(() => {
+        mockOnArticleDownloadFeedStarted({ refreshId: "r1", feedCount: 2, articleCount: 10 });
+      });
+      expect(result.current.articleDownloadProgress?.status).toBe("fetching");
+
+      mockRefreshService.refreshAllFeeds.mockResolvedValue("Feed refresh queued");
+      await act(async () => {
+        await result.current.refreshAllFeeds();
+      });
+
+      expect(mockRefreshService.refreshAllFeeds).toHaveBeenCalledTimes(1);
+    });
+
+    it("tracks a queued feed pass via started/finished events and shows the toast", async () => {
+      const { result } = renderHook(useFeedsContext, { wrapper });
+
+      act(() => {
+        mockOnFeedRefreshStarted({ feedCount: 3 });
+      });
+      expect(result.current.updating).toEqual({ name: "FETCHING", current: 0, total: 3 });
+
+      mockRefreshService.hasPendingRefresh.mockResolvedValue(true);
+      await act(async () => {
+        await mockOnFeedRefreshFinished({ refreshId: "r2", result: "ok" });
+      });
+
+      expect(result.current.updating).toBeNull();
+      expect(result.current.shouldShowUpdateToast).toBe(true);
+    });
+
+    it("clears fetching progress on worker idle even without a last-feed event", () => {
+      const { result } = renderHook(useFeedsContext, { wrapper });
+
+      act(() => {
+        mockOnArticleDownloadFeedStarted({ refreshId: "r1", feedCount: 4, articleCount: 40 });
+      });
+      expect(result.current.articleDownloadProgress?.status).toBe("fetching");
+
+      act(() => {
+        mockOnArticleWorkerIdle();
+      });
+
+      expect(result.current.articleDownloadProgress?.status).toBe("complete");
     });
   });
 });

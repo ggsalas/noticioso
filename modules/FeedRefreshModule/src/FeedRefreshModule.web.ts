@@ -8,6 +8,14 @@ class FeedRefreshModule extends NativeModule<FeedRefreshModuleEvents> {
     return 'Web platform not supported for native feed refresh';
   }
 
+  async reconcileArticleDownloads(): Promise<string> {
+    return 'Web platform not supported';
+  }
+
+  isWorkerBusy(): boolean {
+    return false;
+  }
+
   async clearArticleDownloadJobs(): Promise<void> {
     // Web stub - no-op on web platform
     return;

@@ -218,6 +218,13 @@ class ArticleDownloadWorker(
                 // Check pointer-based relevance: must be currently active or pending
                 val isRelevant = isRefreshStillRelevant(refreshId, db)
 
+                if (isRelevant && !hasPendingWork(refreshId, db)) {
+                    // Every job already reached a terminal state (completed/failed; no
+                    // retries by design). Skip it so reconciliation is a cheap no-op on
+                    // every app open / foreground and emits no progress events.
+                    continue
+                }
+
                 if (isRelevant) {
                     // Resume download for this refresh (creates jobs if missing)
                     val downloadResult = processRefreshArticles(refreshId, db)
@@ -590,6 +597,23 @@ class ArticleDownloadWorker(
             arrayOf(refreshId)
         )
         return cursor.use { it.moveToFirst() }
+    }
+
+    /**
+     * A generation still needs work if it has non-terminal jobs, or no jobs at all
+     * (process died after the feed pass but before jobs were inserted).
+     */
+    private fun hasPendingWork(refreshId: String, db: SQLiteDatabase): Boolean {
+        db.rawQuery(
+            """SELECT COUNT(*), SUM(CASE WHEN status IN ('pending', 'downloading') THEN 1 ELSE 0 END)
+               FROM article_download_jobs WHERE refresh_id = ?""",
+            arrayOf(refreshId)
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) return true
+            val total = cursor.getInt(0)
+            val incomplete = cursor.getInt(1)
+            return total == 0 || incomplete > 0
+        }
     }
 
     private fun emitFeedStartedEvent(
