@@ -585,11 +585,32 @@ describe("FeedsProvider", () => {
 
       mockRefreshService.hasPendingRefresh.mockResolvedValue(true);
       await act(async () => {
-        await mockOnFeedRefreshFinished({ refreshId: "r2", result: "ok" });
+        await mockOnFeedRefreshFinished({ refreshId: "r2", result: "ok", appliedImmediately: false });
       });
 
       expect(result.current.updating).toBeNull();
       expect(result.current.shouldShowUpdateToast).toBe(true);
+    });
+
+    it("reloads the screen without a toast when native applied the first generation itself", async () => {
+      const runFn = jest.fn();
+      mockUseAsyncFn.mockReturnValue({ data: mockFeeds, loading: false, error: null, runFn });
+      const appliedAt = "2026-10-05T08:00:00.000Z";
+      (feedContentService.getLastFullRefresh as jest.Mock)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValue(appliedAt);
+
+      const { result } = renderHook(useFeedsContext, { wrapper });
+      await waitFor(() => expect(feedContentService.getLastFullRefresh).toHaveBeenCalledTimes(1));
+      expect(result.current.lastFullRefreshAt).toBeNull();
+
+      await act(async () => {
+        await mockOnFeedRefreshFinished({ refreshId: "r1", result: "ok", appliedImmediately: true });
+      });
+
+      await waitFor(() => expect(result.current.lastFullRefreshAt).toBe(appliedAt));
+      expect(runFn).toHaveBeenCalled();
+      expect(result.current.shouldShowUpdateToast).toBe(false);
     });
 
     it("clears fetching progress on worker idle even without a last-feed event", () => {

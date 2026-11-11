@@ -63,7 +63,7 @@ Arrows are state transitions; `superseded` is not an alternative at creation —
 1. **building** — the native module opens a new `refreshes` row.
 2. As each feed finishes, it writes `feed_snapshots` (payload) and `refresh_feeds` (status). A failed feed carries over the last good snapshot so the generation is still complete.
 3. **ready** — once all feeds are done, the generation is marked `ready`, the singleton `pending_refresh` pointer is set, and `last_fetch_completion` is updated.
-4. JS notices the pending pointer and shows an "update available" toast. **The active list stays visible unchanged until the user taps the toast.**
+4. JS notices the pending pointer and shows an "update available" toast. **The active list stays visible unchanged until the user taps the toast.** If there is no active generation (empty screen), native applies the new one right away instead.
 5. **Apply (toast tap) — one native transaction** (`applyPendingRefresh`): mark the previous generation `superseded`, swap `active_refresh` to the pending id and mark it `applied`, clear `pending_refresh`.
 6. JS reads the new data by joining `active_refresh` → `feed_snapshots`, so the UI flips atomically with the pointer swap.
 7. **Garbage collection** runs right after the apply (and once at app start): every generation except the active and pending ones is deleted with its child rows, plus article metadata and HTML files no kept snapshot references. Child rows are deleted explicitly; the native connection does not rely on `ON DELETE CASCADE`.

@@ -32,6 +32,11 @@ type Options = {
   feeds: Feed[] | null | undefined;
   /** A feed's articles finished downloading (its cache indicator may have changed). */
   onFeedArticlesDownloaded: (feedUrl: string) => void;
+  /**
+   * Native made a new generation active without the toast (there was none on
+   * screen): reload everything derived from the active generation.
+   */
+  onGenerationApplied: () => void;
   onError: (message: string) => void;
 };
 
@@ -46,8 +51,16 @@ type Options = {
  * - `articleDownloadProgress`: articles are downloading
  * - `shouldShowUpdateToast`: a READY generation waits for the user to apply it
  */
-export function useRefreshLifecycle({ feeds, onFeedArticlesDownloaded, onError }: Options) {
+export function useRefreshLifecycle({
+  feeds,
+  onFeedArticlesDownloaded,
+  onGenerationApplied,
+  onError,
+}: Options) {
   const [updating, setUpdating] = useState<FeedsUpdatingState>(null);
+  // Latest callback for the long-lived native event subscription below
+  const onGenerationAppliedRef = useRef(onGenerationApplied);
+  onGenerationAppliedRef.current = onGenerationApplied;
   const [articleDownloadProgress, setArticleDownloadProgress] =
     useState<ArticleDownloadProgress | null>(null);
   const [shouldShowUpdateToast, setShouldShowUpdateToast] = useState(false);
@@ -92,8 +105,12 @@ export function useRefreshLifecycle({ feeds, onFeedArticlesDownloaded, onError }
       setUpdating({ name: "FETCHING", current: 0, total: event.feedCount });
     });
 
-    const refreshFinished = onFeedRefreshFinished(async () => {
+    const refreshFinished = onFeedRefreshFinished(async (event) => {
       setUpdating(null);
+      if (event.appliedImmediately) {
+        onGenerationAppliedRef.current();
+        return;
+      }
       if (await feedRefreshService.hasPendingRefresh()) {
         setShouldShowUpdateToast(true);
       }

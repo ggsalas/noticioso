@@ -78,7 +78,10 @@ schema: `db/README.md`, "No migrations".
    snapshot. A feed that fails is marked as failed and **carries forward** its
    last good snapshot. There are no automatic retries.
 3. The generation becomes `ready` and pending (an older unapplied pending one
-   becomes `superseded`). JS shows the toast.
+   becomes `superseded`). JS shows the toast. **Exception:** if there is no
+   active generation (new install, cleared caches, rebuilt database) there is
+   nothing on screen to protect, so native applies it right away
+   (`appliedImmediately` in `onFeedRefreshFinished`) and JS just reloads.
 4. Native then downloads the articles of that generation, one by one.
 
 If the worker is busy when a refresh is requested, the request is **queued**

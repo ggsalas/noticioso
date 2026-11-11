@@ -190,7 +190,14 @@ class FeedRefreshModule : Module(), ArticleProgressEvents {
             }
         }
 
-        emit("onFeedRefreshFinished", mapOf("refreshId" to result.refreshId, "result" to result.summary))
+        emit(
+            "onFeedRefreshFinished",
+            mapOf(
+                "refreshId" to result.refreshId,
+                "result" to result.summary,
+                "appliedImmediately" to result.appliedImmediately
+            )
+        )
         return result.summary
     }
 

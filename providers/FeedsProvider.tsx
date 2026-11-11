@@ -75,9 +75,21 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
   const cacheStatus = useFeedCacheStatus();
   const { reloadCounts, reloadDownloadStatus, clear: clearCacheStatus } = cacheStatus;
 
+  // A new generation became active (toast tap, or native applied the first one
+  // by itself): reload everything derived from it.
+  const reloadActiveGeneration = useCallback(async () => {
+    await refetchFeeds();
+    await reloadCounts(data || []);
+    // Its downloads may not have started yet, so the indicator must be
+    // recomputed (it would otherwise keep the previous generation's).
+    await reloadDownloadStatus(data || []);
+    setLastFullRefreshAt(await feedContentService.getLastFullRefresh());
+  }, [refetchFeeds, data, reloadCounts, reloadDownloadStatus]);
+
   const refresh = useRefreshLifecycle({
     feeds: data,
     onFeedArticlesDownloaded: cacheStatus.reloadFeedDownloadStatus,
+    onGenerationApplied: reloadActiveGeneration,
     onError: setActionError,
   });
   const { syncToast, dismissToast, reset: resetRefresh } = refresh;
@@ -118,14 +130,9 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
     // Applied, or there was nothing to apply (stale toast): hide it either way
     dismissToast();
     if (applied) {
-      await refetchFeeds();
-      await reloadCounts(data || []);
-      // New generation: its downloads may not have started yet, so the ● must
-      // be recomputed (it would otherwise keep the previous generation's).
-      await reloadDownloadStatus(data || []);
-      setLastFullRefreshAt(await feedContentService.getLastFullRefresh());
+      await reloadActiveGeneration();
     }
-  }, [refetchFeeds, data, reloadCounts, reloadDownloadStatus, dismissToast]);
+  }, [reloadActiveGeneration, dismissToast]);
 
   const handleImportFeeds = async (feeds: string) => {
     try {

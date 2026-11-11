@@ -41,6 +41,11 @@ export function onArticleDownloadFeedComplete(
 export interface FeedRefreshFinishedEvent {
   refreshId: string | null;
   result: string;
+  /**
+   * There was no active generation, so native made this one active right away
+   * (no toast). The UI must reload what it shows.
+   */
+  appliedImmediately: boolean;
 }
 
 /** A native feed pass started (direct call or one that was queued behind other work). */

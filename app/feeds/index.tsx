@@ -154,13 +154,15 @@ export default function Feeds() {
               >
                 Noticioso
               </Text>
-              <Text
-                style={style.headerSubtitle}
-                numberOfLines={1}
-                ellipsizeMode="tail"
-              >
-                {`Last full update at ${formatLastRefresh(lastFullRefreshAt)}`}
-              </Text>
+              {lastFullRefreshAt ? (
+                <Text
+                  style={style.headerSubtitle}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {`Last full update at ${formatLastRefresh(lastFullRefreshAt)}`}
+                </Text>
+              ) : null}
             </View>
           ),
           headerRight: () => {

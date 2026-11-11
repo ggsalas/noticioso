@@ -130,6 +130,14 @@ describe("Feeds screen (app/feeds)", () => {
     expect(screen.getByText(/Last full update at/)).toBeTruthy();
   });
 
+  it("hides the 'Last full update' line when no generation was applied yet", () => {
+    mockContext({ lastFullRefreshAt: null });
+
+    render(<Feeds />);
+
+    expect(screen.queryByText(/Last full update/)).toBeNull();
+  });
+
   it("shows per-feed article download progress in header without hiding the active list", () => {
     mockContext({
       articleDownloadProgress: {

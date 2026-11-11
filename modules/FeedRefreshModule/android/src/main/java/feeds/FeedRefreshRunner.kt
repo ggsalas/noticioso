@@ -19,8 +19,13 @@ import java.util.UUID
  */
 class FeedRefreshRunner(private val context: Context) {
 
-    /** refreshId is null when the pass failed before producing a generation. */
-    class Result(val refreshId: String?, val summary: String)
+    /**
+     * refreshId is null when the pass failed before producing a generation.
+     * appliedImmediately: there was no active generation (new install, cleared
+     * caches, rebuilt database), so this one became active right away instead
+     * of waiting for the user to tap the toast.
+     */
+    class Result(val refreshId: String?, val summary: String, val appliedImmediately: Boolean = false)
 
     fun run(feeds: List<Map<String, Any>>): Result {
         return try {
@@ -66,7 +71,16 @@ class FeedRefreshRunner(private val context: Context) {
 
                 store.markReadyAsPending(refreshId, Timestamps.nowIso())
 
-                Result(refreshId, "$successCount feeds downloaded successfully, ${failedFeedUrls.size} failed")
+                // Nothing on screen yet: there is no content to protect, so show
+                // the new generation now instead of offering it with the toast.
+                val appliedImmediately = store.activeRefreshId() == null &&
+                    store.applyPending(Timestamps.nowIso())
+
+                Result(
+                    refreshId,
+                    "$successCount feeds downloaded successfully, ${failedFeedUrls.size} failed",
+                    appliedImmediately
+                )
             }
         } catch (e: Exception) {
             android.util.Log.e("FeedRefreshModule", "Feed refresh failed", e)
