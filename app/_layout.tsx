@@ -112,6 +112,10 @@ export default function RootLayout() {
     if (!didInitialReconcile.current) {
       didInitialReconcile.current = true;
       triggerReconcile("initial");
+      // Finish a GC interrupted by process death (idempotent; queued after reconcile)
+      FeedRefreshModule.collectGarbage().catch((err: Error) => {
+        console.warn("Failed to queue garbage collection:", err);
+      });
     }
 
     const handleAppStateChange = (nextAppState: AppStateStatus) => {

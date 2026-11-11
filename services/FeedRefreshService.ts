@@ -87,6 +87,15 @@ export class FeedRefreshService {
       result = true;
     });
 
+    if (result) {
+      // Stage 4: the previous generation is now superseded; drop it and any article
+      // no active/pending snapshot references. Runs on the native serial worker
+      // (never overlaps downloads); fire-and-forget, idempotent.
+      FeedRefreshModule.collectGarbage().catch((err: Error) => {
+        console.warn("Failed to queue garbage collection:", err);
+      });
+    }
+
     return result;
   }
 

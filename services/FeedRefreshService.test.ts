@@ -153,6 +153,8 @@ describe("FeedRefreshService", () => {
       );
       expect(mockPendingRefreshRepository.clear).toHaveBeenCalled();
       expect(result).toBe(true);
+      // Stage 4: GC runs after a successful apply
+      expect(mockFeedRefreshModule.collectGarbage).toHaveBeenCalledTimes(1);
     });
 
     it("should apply pending refresh when no active exists", async () => {
@@ -192,6 +194,31 @@ describe("FeedRefreshService", () => {
       expect(mockActiveRefreshRepository.set).not.toHaveBeenCalled();
       expect(mockRefreshRepository.markApplied).not.toHaveBeenCalled();
       expect(mockPendingRefreshRepository.clear).not.toHaveBeenCalled();
+      expect(mockFeedRefreshModule.collectGarbage).not.toHaveBeenCalled();
+    });
+
+    it("should still apply when queuing garbage collection fails", async () => {
+      mockPendingRefreshRepository.get.mockResolvedValue({
+        refreshId: "refresh-123",
+        readyAt: "2026-01-01T00:00:00.000Z",
+      });
+      mockRefreshRepository.get.mockResolvedValue({
+        id: "refresh-123",
+        state: "ready",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        completedAt: "2026-01-01T00:00:00.000Z",
+        appliedAt: null,
+        supersededAt: null,
+      });
+      mockActiveRefreshRepository.get.mockResolvedValue(null);
+      mockFeedRefreshModule.collectGarbage.mockRejectedValueOnce(new Error("boom"));
+      const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+
+      const result = await service.applyPendingRefresh();
+      await Promise.resolve();
+
+      expect(result).toBe(true);
+      warn.mockRestore();
     });
   });
 

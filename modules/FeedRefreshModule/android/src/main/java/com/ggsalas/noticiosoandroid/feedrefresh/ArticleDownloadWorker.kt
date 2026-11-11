@@ -469,33 +469,14 @@ class ArticleDownloadWorker(
     }
 
     /**
-     * Extract article links from normalized feed JSON using proper JSON parsing.
-     * Only extracts links from rss.channel.item[] array to avoid including channel-level URLs.
+     * Extract article links from normalized feed JSON (see extractArticleLinks).
+     * Unparseable JSON yields no links here (nothing to download).
      */
     private fun extractLinksFromJson(jsonData: String): List<String> {
-        val links = mutableListOf<String>()
-
-        try {
-            val json = org.json.JSONObject(jsonData)
-            val rss = json.optJSONObject("rss") ?: return links
-            val channel = rss.optJSONObject("channel") ?: return links
-            val items = channel.optJSONArray("item") ?: return links
-
-            for (i in 0 until items.length()) {
-                val item = items.optJSONObject(i) ?: continue
-                val link = item.optString("link", "").trim()
-
-                // Filter blank and non-http(s) URLs
-                if (link.isNotEmpty() && (link.startsWith("http://") || link.startsWith("https://"))) {
-                    links.add(link)
-                }
-            }
-        } catch (e: Exception) {
-            // If parsing fails, return empty list
-            android.util.Log.w("ArticleDownloadWorker", "Failed to parse feed JSON", e)
+        return extractArticleLinks(jsonData) ?: run {
+            android.util.Log.w("ArticleDownloadWorker", "Failed to parse feed JSON")
+            emptyList()
         }
-
-        return links
     }
 
     private fun createJobIfNotExists(

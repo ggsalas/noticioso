@@ -67,6 +67,7 @@ class FeedRefreshModule : Module() {
     private val feedRefreshQueued = AtomicBoolean(false)
     private val latestRequestedFeeds = AtomicReference<List<Map<String, Any>>?>(null)
     private val reconcileQueued = AtomicBoolean(false)
+    private val gcQueued = AtomicBoolean(false)
 
     override fun definition() = ModuleDefinition {
         Name("FeedRefreshModule")
@@ -125,6 +126,31 @@ class FeedRefreshModule : Module() {
                 result
             }
             if (wasBusy) "Reconciliation enqueued" else "Reconciliation started"
+        }
+
+        /**
+         * Stage 4 GC: drop every generation except active/pending, plus article
+         * metadata + HTML no kept snapshot references. Queued on the serial worker so it
+         * never overlaps a feed pass or download. Safe to call repeatedly (idempotent).
+         */
+        AsyncFunction("collectGarbage") { ->
+            val context = appContext.reactContext ?: return@AsyncFunction "No context"
+
+            if (!gcQueued.compareAndSet(false, true)) {
+                return@AsyncFunction "Garbage collection already queued"
+            }
+            submitTask(context) {
+                gcQueued.set(false)
+                val db = getDatabase(context)
+                try {
+                    val result = ArticleGarbageCollector(context).collect(db)
+                    android.util.Log.i("FeedRefreshModule", "Garbage collection: $result")
+                    result
+                } finally {
+                    db.close()
+                }
+            }
+            "Garbage collection queued"
         }
 
         // Function to clear all article download jobs (used by StorageService.clearCaches)

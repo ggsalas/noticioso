@@ -12,6 +12,7 @@ jest.mock('@/modules/FeedRefreshModule', () => ({
     clearArticleDownloadJobs: jest.fn(),
     addListener: jest.fn().mockReturnValue({ remove: jest.fn() }),
     isWorkerBusy: jest.fn().mockReturnValue(false),
+    collectGarbage: jest.fn().mockResolvedValue('ok'),
   },
   toNativeFeedInput: (feed) => ({
     id: feed.id,
@@ -30,6 +31,7 @@ jest.mock('@/modules/FeedRefreshModule/src/FeedRefreshModule', () => ({
     clearArticleDownloadJobs: jest.fn(),
     addListener: jest.fn().mockReturnValue({ remove: jest.fn() }),
     isWorkerBusy: jest.fn().mockReturnValue(false),
+    collectGarbage: jest.fn().mockResolvedValue('ok'),
   },
   toNativeFeedInput: (feed) => ({
     id: feed.id,
