@@ -71,7 +71,7 @@ const baseContext = {
   loading: null,
   error: null,
   feedArticleCounts: { "https://feed1.com": 5 },
-  feedDownloadsAttempted: {},
+  feedDownloadStatus: {},
   updating: null,
   lastFullRefreshAt: "2026-10-03T10:00:00.000Z",
   shouldShowUpdateToast: false,
@@ -167,31 +167,35 @@ describe("Feeds screen (app/feeds)", () => {
     expect(screen.queryByTestId("html-pages-nav")).toBeNull();
   });
 
-  it("shows the ● when every article download of the feed was attempted", () => {
-    mockContext({
-      feedDownloadsAttempted: { "https://feed1.com": true },
-    });
+  it("shows ● when every article was attempted and some were downloaded", () => {
+    mockContext({ feedDownloadStatus: { "https://feed1.com": "done" } });
 
     render(<Feeds />);
 
-    // Check that the HTML contains the filled circle indicator
-    const navElement = screen.getByTestId("html-pages-nav");
-    expect(navElement).toBeTruthy();
-    // The indicator should be present in the HTML content
-    expect(navElement.props.html).toContain("●");
-    expect(navElement.props.html).toContain("All articles downloaded or attempted");
+    const html = screen.getByTestId("html-pages-nav").props.html;
+    expect(html).toContain("●");
+    expect(html).toContain("Articles downloaded");
+    expect(html).not.toContain("○");
   });
 
-  it("does not show the ● while article downloads are still pending", () => {
-    mockContext({
-      feedDownloadsAttempted: { "https://feed1.com": false },
-    });
+  it("shows ○ when every article was attempted and none could be downloaded", () => {
+    mockContext({ feedDownloadStatus: { "https://feed1.com": "allFailed" } });
 
     render(<Feeds />);
 
-    const navElement = screen.getByTestId("html-pages-nav");
-    expect(navElement).toBeTruthy();
-    // The indicator should not be present in the HTML content
-    expect(navElement.props.html).not.toContain("●");
+    const html = screen.getByTestId("html-pages-nav").props.html;
+    expect(html).toContain("○");
+    expect(html).toContain("No article could be downloaded");
+    expect(html).not.toContain("●");
+  });
+
+  it("shows no indicator while article downloads are still pending", () => {
+    mockContext({ feedDownloadStatus: { "https://feed1.com": "pending" } });
+
+    render(<Feeds />);
+
+    const html = screen.getByTestId("html-pages-nav").props.html;
+    expect(html).not.toContain("●");
+    expect(html).not.toContain("○");
   });
 });

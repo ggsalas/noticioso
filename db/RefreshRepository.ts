@@ -38,17 +38,19 @@ export class RefreshRepository {
   }
 
   /**
-   * Article URLs of a generation whose download was already attempted
-   * (completed or failed; failed jobs are never retried).
+   * Articles of a generation whose download was already attempted, by URL:
+   * "completed" or "failed" (failed jobs are never retried).
    */
-  async getAttemptedArticleUrls(refreshId: string): Promise<string[]> {
+  async getAttemptedArticles(
+    refreshId: string,
+  ): Promise<Map<string, "completed" | "failed">> {
     const db = await getDatabase();
-    const rows = await db.getAllAsync<{ url: string }>(
-      `SELECT url FROM article_download_jobs
+    const rows = await db.getAllAsync<{ url: string; status: "completed" | "failed" }>(
+      `SELECT url, status FROM article_download_jobs
        WHERE refresh_id = ? AND status IN ('completed', 'failed')`,
       [refreshId],
     );
-    return rows.map((row) => row.url);
+    return new Map(rows.map((row) => [row.url, row.status]));
   }
 }
 

@@ -1,6 +1,6 @@
 import { refreshRepository, feedSnapshotRepository } from "@/db";
 import { articleService, ArticleService } from "./ArticleService";
-import type { FeedData, FeedContentItem } from "~/types";
+import type { FeedData, FeedContentItem, FeedDownloadStatus } from "~/types";
 
 export type FeedSnapshot = {
   data: FeedData;
@@ -82,54 +82,58 @@ export class FeedContentService {
   };
 
   /**
-   * For each feed, whether the native module already TRIED to download every
-   * article it lists in the active generation (each one completed or failed).
-   * This is the ● in the feed list: a freshly applied generation shows none
-   * until its downloads are attempted. Derived on demand from
-   * article_download_jobs; nothing extra is persisted.
-   * - no snapshot for the feed -> false
+   * Download status of each feed's articles in the active generation (the
+   * indicator in the feed list; see FeedDownloadStatus). A freshly applied
+   * generation shows none until its downloads are attempted. Derived on demand
+   * from article_download_jobs; nothing extra is persisted.
+   * - no snapshot for the feed -> "pending"
    * - snapshot with zero articles -> omitted (the UI shows no indicator)
    */
-  getDownloadsAttempted = async (feedUrls: string[]): Promise<Record<string, boolean>> => {
-    const attempted: Record<string, boolean> = {};
+  getDownloadStatuses = async (
+    feedUrls: string[],
+  ): Promise<Record<string, FeedDownloadStatus>> => {
+    const statuses: Record<string, FeedDownloadStatus> = {};
 
     const active = await refreshRepository.getActive();
-    if (!active) return attempted;
+    if (!active) return statuses;
 
     const snapshots = await feedSnapshotRepository.getAllForRefresh(active.refreshId);
     const snapshotByFeed = new Map(snapshots.map((snapshot) => [snapshot.feedUrl, snapshot]));
-    const attemptedUrls = new Set(await refreshRepository.getAttemptedArticleUrls(active.refreshId));
+    const attempted = await refreshRepository.getAttemptedArticles(active.refreshId);
 
-    await Promise.allSettled(
-      feedUrls.map(async (feedUrl) => {
-        const snapshot = snapshotByFeed.get(feedUrl);
-        if (!snapshot) {
-          attempted[feedUrl] = false;
-          return;
-        }
+    for (const feedUrl of feedUrls) {
+      const snapshot = snapshotByFeed.get(feedUrl);
+      if (!snapshot) {
+        statuses[feedUrl] = "pending";
+        continue;
+      }
 
-        const urls = this.articleUrls(snapshot.data);
-        if (urls.length === 0) return;
+      const urls = this.articleUrls(snapshot.data);
+      if (urls.length > 0) statuses[feedUrl] = this.downloadStatus(urls, attempted);
+    }
 
-        attempted[feedUrl] = urls.every((url) => attemptedUrls.has(url));
-      }),
-    );
-
-    return attempted;
+    return statuses;
   };
 
-  /** Same check as getDownloadsAttempted for a single feed (after a native per-feed event). */
-  isFeedDownloadAttempted = async (feedUrl: string): Promise<boolean> => {
+  /** Same as getDownloadStatuses for a single feed (after a native per-feed event). */
+  getFeedDownloadStatus = async (feedUrl: string): Promise<FeedDownloadStatus> => {
     const active = await refreshRepository.getActive();
-    if (!active) return false;
+    if (!active) return "pending";
 
     const snapshot = await feedSnapshotRepository.get(active.refreshId, feedUrl);
     const urls = snapshot ? this.articleUrls(snapshot.data) : [];
-    if (urls.length === 0) return false;
+    if (urls.length === 0) return "pending";
 
-    const attemptedUrls = new Set(await refreshRepository.getAttemptedArticleUrls(active.refreshId));
-    return urls.every((url) => attemptedUrls.has(url));
+    return this.downloadStatus(urls, await refreshRepository.getAttemptedArticles(active.refreshId));
   };
+
+  private downloadStatus(
+    urls: string[],
+    attempted: Map<string, "completed" | "failed">,
+  ): FeedDownloadStatus {
+    if (!urls.every((url) => attempted.has(url))) return "pending";
+    return urls.some((url) => attempted.get(url) === "completed") ? "done" : "allFailed";
+  }
 
   private articleUrls(data: FeedData): string[] {
     return (data.rss?.channel?.item ?? [])

@@ -3,7 +3,7 @@ import { ArticleService } from "./ArticleService";
 import { refreshRepository, feedSnapshotRepository } from "@/db";
 
 jest.mock("@/db", () => ({
-  refreshRepository: { getActive: jest.fn(), getAttemptedArticleUrls: jest.fn() },
+  refreshRepository: { getActive: jest.fn(), getAttemptedArticles: jest.fn() },
   feedSnapshotRepository: { get: jest.fn(), getAllForRefresh: jest.fn() },
 }));
 
@@ -133,56 +133,75 @@ describe("FeedContentService", () => {
     });
   });
 
-  describe("downloads attempted (the ● indicator)", () => {
+  describe("download status (the ● / ○ indicator)", () => {
     const URLS = ["https://example.com/article1", "https://example.com/article2"];
     const emptySnapshot = {
       ...snapshot,
       feedUrl: "https://empty.com/feed",
       data: { ...feedData, rss: { channel: { ...feedData.rss.channel, item: [] } } },
     };
+    const attempted = (entries: [string, "completed" | "failed"][]) => new Map(entries);
 
     beforeEach(() => {
       mockRefreshRepo.getActive.mockResolvedValue(activeRefresh);
       mockFeedSnapshotRepo.getAllForRefresh.mockResolvedValue([snapshot, emptySnapshot] as never);
     });
 
-    it("is true only when every article of the feed was attempted (completed or failed)", async () => {
-      mockRefreshRepo.getAttemptedArticleUrls.mockResolvedValueOnce(URLS);
-      expect(await feedContentService.getDownloadsAttempted([FEED_URL])).toEqual({ [FEED_URL]: true });
-
+    it("is pending while some article download was not attempted yet", async () => {
       // e.g. a freshly applied generation whose downloads are still running
-      mockRefreshRepo.getAttemptedArticleUrls.mockResolvedValueOnce([URLS[0]]);
-      expect(await feedContentService.getDownloadsAttempted([FEED_URL])).toEqual({ [FEED_URL]: false });
-
-      expect(mockRefreshRepo.getAttemptedArticleUrls).toHaveBeenCalledWith(activeRefresh.refreshId);
+      mockRefreshRepo.getAttemptedArticles.mockResolvedValueOnce(attempted([[URLS[0], "completed"]]));
+      expect(await feedContentService.getDownloadStatuses([FEED_URL])).toEqual({ [FEED_URL]: "pending" });
+      expect(mockRefreshRepo.getAttemptedArticles).toHaveBeenCalledWith(activeRefresh.refreshId);
     });
 
-    it("is false for a feed without snapshot and omitted for a feed with no articles", async () => {
-      const result = await feedContentService.getDownloadsAttempted([
+    it("is done when every article was attempted and at least one downloaded", async () => {
+      mockRefreshRepo.getAttemptedArticles.mockResolvedValueOnce(
+        attempted([[URLS[0], "completed"], [URLS[1], "failed"]]),
+      );
+      expect(await feedContentService.getDownloadStatuses([FEED_URL])).toEqual({ [FEED_URL]: "done" });
+    });
+
+    it("is allFailed when every article was attempted and none downloaded", async () => {
+      mockRefreshRepo.getAttemptedArticles.mockResolvedValueOnce(
+        attempted([[URLS[0], "failed"], [URLS[1], "failed"]]),
+      );
+      expect(await feedContentService.getDownloadStatuses([FEED_URL])).toEqual({ [FEED_URL]: "allFailed" });
+    });
+
+    it("is pending for a feed without snapshot and omitted for a feed with no articles", async () => {
+      mockRefreshRepo.getAttemptedArticles.mockResolvedValueOnce(attempted([]));
+      const result = await feedContentService.getDownloadStatuses([
         "https://missing.com/feed",
         "https://empty.com/feed",
       ]);
 
-      expect(result).toEqual({ "https://missing.com/feed": false });
+      expect(result).toEqual({ "https://missing.com/feed": "pending" });
     });
 
     it("is empty when there is no active generation", async () => {
       mockRefreshRepo.getActive.mockResolvedValue(null);
 
-      expect(await feedContentService.getDownloadsAttempted([FEED_URL])).toEqual({});
+      expect(await feedContentService.getDownloadStatuses([FEED_URL])).toEqual({});
     });
 
     it("checks a single feed", async () => {
       mockFeedSnapshotRepo.get.mockResolvedValue(snapshot as never);
 
-      mockRefreshRepo.getAttemptedArticleUrls.mockResolvedValueOnce(URLS);
-      expect(await feedContentService.isFeedDownloadAttempted(FEED_URL)).toBe(true);
+      mockRefreshRepo.getAttemptedArticles.mockResolvedValueOnce(
+        attempted([[URLS[0], "completed"], [URLS[1], "completed"]]),
+      );
+      expect(await feedContentService.getFeedDownloadStatus(FEED_URL)).toBe("done");
 
-      mockRefreshRepo.getAttemptedArticleUrls.mockResolvedValueOnce([]);
-      expect(await feedContentService.isFeedDownloadAttempted(FEED_URL)).toBe(false);
+      mockRefreshRepo.getAttemptedArticles.mockResolvedValueOnce(
+        attempted([[URLS[0], "failed"], [URLS[1], "failed"]]),
+      );
+      expect(await feedContentService.getFeedDownloadStatus(FEED_URL)).toBe("allFailed");
+
+      mockRefreshRepo.getAttemptedArticles.mockResolvedValueOnce(attempted([]));
+      expect(await feedContentService.getFeedDownloadStatus(FEED_URL)).toBe("pending");
 
       mockFeedSnapshotRepo.get.mockResolvedValue(null);
-      expect(await feedContentService.isFeedDownloadAttempted(FEED_URL)).toBe(false);
+      expect(await feedContentService.getFeedDownloadStatus(FEED_URL)).toBe("pending");
     });
   });
 

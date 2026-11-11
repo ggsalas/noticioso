@@ -58,7 +58,7 @@ Services encapsulate JS logic and data access. Each service is a class with a si
 services/
   StorageService.ts          -- AsyncStorage abstraction; clearCaches() delegates to native
   FeedService.ts             -- The user's feed list (CRUD, import/export) in AsyncStorage
-  FeedContentService.ts      -- Reads the active generation: feed content, article counts, the ● "downloads attempted" indicator
+  FeedContentService.ts      -- Reads the active generation: feed content, article counts, the ● / ○ download indicator
   FeedRefreshService.ts      -- Triggers native refresh, applies the pending generation, 1h staleness
   ArticleService.ts          -- Reads cached articles (HTML file + metadata); asks native to download when missing
   FeedDiscoveryService.ts    -- Find RSS feeds from websites (used when adding a feed)

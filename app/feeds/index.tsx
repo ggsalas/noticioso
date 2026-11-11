@@ -1,7 +1,7 @@
 import { Link, Stack, useRouter, useFocusEffect } from "expo-router";
 import { Pressable, Text, StyleSheet, View, ActivityIndicator } from "react-native";
 import { useCallback, useMemo, useState } from "react";
-import { HandleRouterLinkData } from "@/types";
+import { FeedDownloadStatus, HandleRouterLinkData } from "@/types";
 import { useThemeContext } from "@/theme/ThemeProvider";
 import { HTMLPagesNav } from "@/components/HTMLPagesNav";
 import { NewArticlesToast } from "@/components/NewArticlesToast";
@@ -11,6 +11,13 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { formatLastRefresh } from "~/lib/timeFormatters";
 import { useWebViewHighlight } from "~/hooks/useWebViewHighlight";
 
+// Shown next to a feed once every article download was attempted ("pending": nothing)
+const DOWNLOAD_INDICATORS: Record<FeedDownloadStatus, { symbol: string; label: string } | null> = {
+  pending: null,
+  done: { symbol: "●", label: "Articles downloaded" },
+  allFailed: { symbol: "○", label: "No article could be downloaded" },
+};
+
 export default function Feeds() {
   const { colors, fonts, sizes, style } = useStyles();
   const {
@@ -18,7 +25,7 @@ export default function Feeds() {
     loading,
     error,
     feedArticleCounts,
-    feedDownloadsAttempted,
+    feedDownloadStatus,
     updating,
     lastFullRefreshAt,
     shouldShowUpdateToast,
@@ -81,9 +88,9 @@ export default function Feeds() {
         : visibleFeeds
             ?.map(
               ({ name, url }: any) => {
-                const isComplete = feedDownloadsAttempted[url] === true;
-                const circleIndicator = isComplete
-                  ? ` <span style="color: ${colors.text};" title="All articles downloaded or attempted" aria-label="All articles downloaded or attempted">●</span>`
+                const indicator = DOWNLOAD_INDICATORS[feedDownloadStatus[url]];
+                const circleIndicator = indicator
+                  ? ` <span style="color: ${colors.text};" title="${indicator.label}" aria-label="${indicator.label}">${indicator.symbol}</span>`
                   : "";
                 return `
                 <div
@@ -96,7 +103,7 @@ export default function Feeds() {
               },
             )
             .join(""),
-    [visibleFeeds, feedArticleCounts, feedDownloadsAttempted, getRouteLink, colors.text],
+    [visibleFeeds, feedArticleCounts, feedDownloadStatus, getRouteLink, colors.text],
   );
 
   const html = useMemo(

@@ -9,7 +9,7 @@ import {
 import { feedService } from "@/services/FeedService";
 import { feedRefreshService } from "@/services/FeedRefreshService";
 import { feedContentService } from "@/services/FeedContentService";
-import { Feed } from "@/types";
+import { Feed, FeedDownloadStatus } from "@/types";
 import { useAsyncFn } from "@/hooks/useAsyncFn";
 import { useFeedCacheStatus } from "@/hooks/useFeedCacheStatus";
 import {
@@ -28,7 +28,7 @@ type FeedsContextType = {
   error?: string | null;
   feeds?: Feed[] | null;
   feedArticleCounts: Record<string, number>;
-  feedDownloadsAttempted: Record<string, boolean>;
+  feedDownloadStatus: Record<string, FeedDownloadStatus>;
   lastFullRefreshAt: string | null;
   shouldShowUpdateToast: boolean;
   articleDownloadProgress: ArticleDownloadProgress | null;
@@ -46,7 +46,7 @@ type FeedsContextType = {
 
 const FeedsContext = createContext<FeedsContextType>({
   feedArticleCounts: {},
-  feedDownloadsAttempted: {},
+  feedDownloadStatus: {},
   lastFullRefreshAt: null,
   shouldShowUpdateToast: false,
   articleDownloadProgress: null,
@@ -73,11 +73,11 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
   const [lastFullRefreshAt, setLastFullRefreshAt] = useState<string | null>(null);
 
   const cacheStatus = useFeedCacheStatus();
-  const { reloadCounts, reloadDownloadsAttempted, clear: clearCacheStatus } = cacheStatus;
+  const { reloadCounts, reloadDownloadStatus, clear: clearCacheStatus } = cacheStatus;
 
   const refresh = useRefreshLifecycle({
     feeds: data,
-    onFeedArticlesDownloaded: cacheStatus.reloadFeedDownloadsAttempted,
+    onFeedArticlesDownloaded: cacheStatus.reloadFeedDownloadStatus,
     onError: setActionError,
   });
   const { syncToast, dismissToast, reset: resetRefresh } = refresh;
@@ -88,14 +88,14 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
 
     const loadGenerationState = async () => {
       await reloadCounts(data);
-      await reloadDownloadsAttempted(data);
+      await reloadDownloadStatus(data);
       // applied_at changes only when a pending generation is applied (toast tap)
       setLastFullRefreshAt(await feedContentService.getLastFullRefresh());
       await syncToast();
     };
 
     loadGenerationState();
-  }, [data, reloadCounts, reloadDownloadsAttempted, syncToast]);
+  }, [data, reloadCounts, reloadDownloadStatus, syncToast]);
 
   // Called after "Clear cache": no generation exists anymore, so every piece of
   // state derived from generations must go (counts, indicators, toast, timestamp).
@@ -108,9 +108,9 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
   // Recompute the cache indicators (called when the feed list screen gets focus)
   const refreshActiveFeedCacheState = useCallback(async () => {
     if (data && data.length > 0) {
-      await reloadDownloadsAttempted(data);
+      await reloadDownloadStatus(data);
     }
-  }, [data, reloadDownloadsAttempted]);
+  }, [data, reloadDownloadStatus]);
 
   // Apply the pending generation (toast tap)
   const refreshAndUpdateToast = useCallback(async () => {
@@ -122,10 +122,10 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
       await reloadCounts(data || []);
       // New generation: its downloads may not have started yet, so the ● must
       // be recomputed (it would otherwise keep the previous generation's).
-      await reloadDownloadsAttempted(data || []);
+      await reloadDownloadStatus(data || []);
       setLastFullRefreshAt(await feedContentService.getLastFullRefresh());
     }
-  }, [refetchFeeds, data, reloadCounts, reloadDownloadsAttempted, dismissToast]);
+  }, [refetchFeeds, data, reloadCounts, reloadDownloadStatus, dismissToast]);
 
   const handleImportFeeds = async (feeds: string) => {
     try {
@@ -191,7 +191,7 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
         loading: loading ? { name: "FETCHING", current: 0, total: 0 } : null,
         error: error ?? actionError,
         feedArticleCounts: cacheStatus.feedArticleCounts,
-        feedDownloadsAttempted: cacheStatus.feedDownloadsAttempted,
+        feedDownloadStatus: cacheStatus.feedDownloadStatus,
         updating: refresh.updating,
         lastFullRefreshAt,
         shouldShowUpdateToast: refresh.shouldShowUpdateToast,

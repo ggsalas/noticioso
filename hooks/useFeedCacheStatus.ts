@@ -1,34 +1,34 @@
 import { useCallback, useState } from "react";
 import { feedContentService } from "@/services/FeedContentService";
-import type { Feed } from "@/types";
+import type { Feed, FeedDownloadStatus } from "@/types";
 
 /**
  * Per-feed numbers shown in the feed list, derived from the ACTIVE generation:
- * article counts and the ● "downloads attempted" indicator. Nothing is persisted;
+ * article counts and the download indicator (● / ○). Nothing is persisted;
  * callers reload when the generation or the cache changes.
  */
 export function useFeedCacheStatus() {
   const [feedArticleCounts, setFeedArticleCounts] = useState<Record<string, number>>({});
-  const [feedDownloadsAttempted, setFeedDownloadsAttempted] = useState<
-    Record<string, boolean>
+  const [feedDownloadStatus, setFeedDownloadStatus] = useState<
+    Record<string, FeedDownloadStatus>
   >({});
 
   const reloadCounts = useCallback(async (feeds: Feed[]) => {
     setFeedArticleCounts(await feedContentService.getArticleCounts(feeds.map((f) => f.url)));
   }, []);
 
-  const reloadDownloadsAttempted = useCallback(async (feeds: Feed[]) => {
-    setFeedDownloadsAttempted(
-      await feedContentService.getDownloadsAttempted(feeds.map((f) => f.url)),
+  const reloadDownloadStatus = useCallback(async (feeds: Feed[]) => {
+    setFeedDownloadStatus(
+      await feedContentService.getDownloadStatuses(feeds.map((f) => f.url)),
     );
   }, []);
 
   // Recompute a single feed (after its native per-feed download event) instead of
   // rescanning every snapshot.
-  const reloadFeedDownloadsAttempted = useCallback(async (feedUrl: string) => {
+  const reloadFeedDownloadStatus = useCallback(async (feedUrl: string) => {
     try {
-      const attempted = await feedContentService.isFeedDownloadAttempted(feedUrl);
-      setFeedDownloadsAttempted((previous) => ({ ...previous, [feedUrl]: attempted }));
+      const status = await feedContentService.getFeedDownloadStatus(feedUrl);
+      setFeedDownloadStatus((previous) => ({ ...previous, [feedUrl]: status }));
     } catch (error) {
       // Advisory indicator: a failed check must not disrupt reading
       console.warn(`Could not recalculate article cache status for ${feedUrl}:`, error);
@@ -37,15 +37,15 @@ export function useFeedCacheStatus() {
 
   const clear = useCallback(() => {
     setFeedArticleCounts({});
-    setFeedDownloadsAttempted({});
+    setFeedDownloadStatus({});
   }, []);
 
   return {
     feedArticleCounts,
-    feedDownloadsAttempted,
+    feedDownloadStatus,
     reloadCounts,
-    reloadDownloadsAttempted,
-    reloadFeedDownloadsAttempted,
+    reloadDownloadStatus,
+    reloadFeedDownloadStatus,
     clear,
   };
 }

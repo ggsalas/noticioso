@@ -92,10 +92,11 @@ descarga en curso. Después encola la limpieza.
   pero fuera del worker serial para que el lector no espere detrás de una
   descarga masiva.
 - Un artículo cuenta como cacheado cuando tiene **metadata y archivo**.
-- El círculo ● junto a un feed indica que **ya se intentó bajar cada artículo**
-  de ese feed en la generación activa (cada job terminó en `completed` o
-  `failed`). Al aplicar una generación nueva ningún feed lo tiene hasta que sus
-  descargas se intentan; un sitio que rechaza la descarga no lo impide. Se
+- El indicador junto a un feed aparece cuando **ya se intentó bajar cada
+  artículo** de ese feed en la generación activa (cada job terminó en
+  `completed` o `failed`): **●** si se bajó al menos uno, **○** si fallaron
+  todos (por ejemplo un sitio que rechaza la descarga). Al aplicar una
+  generación nueva ningún feed lo tiene hasta que sus descargas se intentan. Se
   calcula al momento desde `article_download_jobs`, no se guarda.
 
 ### Limpieza (GC)
