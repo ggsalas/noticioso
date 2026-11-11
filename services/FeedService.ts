@@ -1,152 +1,14 @@
-import sanitize from "safe-html";
 import { storageService, StorageService } from "./StorageService";
-import { feedCacheService, FeedCacheService } from "./FeedCacheService";
-import {
-  articleCacheService,
-  ArticleCacheService,
-} from "./ArticleCacheService";
-import { articlePreloader, ArticlePreloader } from "./ArticlePreloader";
-import {
-  articleRankingService,
-  ArticleRankingService,
-} from "./ArticleRankingService";
-import type { Feed, FeedData, FeedContentItem } from "~/types";
-import { parseAndNormalizeFeed } from "@/lib/feedSchema";
+import type { Feed } from "~/types";
 
 const FEEDS_LIST_KEY = "@noticioso-feedList";
 
+/**
+ * The user's feed list (AsyncStorage). Feed CONTENT is fetched and stored by
+ * the native module and read through FeedContentService.
+ */
 export class FeedService {
-  constructor(
-    private storage: StorageService,
-    private cache: FeedCacheService,
-    private articleCache: ArticleCacheService,
-    private preloader: ArticlePreloader,
-    private ranking: ArticleRankingService,
-  ) {}
-
-  // Get cached content immediately, regardless of age
-  // No background fetch - user is responsible for that
-  getFeedContent = async (url: string): Promise<FeedData | undefined> => {
-    const cached = await this.cache.get(url);
-
-    if (cached) {
-      // Enhance with cached article metadata
-      const enhancedItems = await this.enhanceItemsWithCache(
-        cached.data.rss?.channel?.item,
-      );
-      const enhancedData: FeedData = {
-        ...cached.data,
-        rss: {
-          ...cached.data.rss,
-          channel: {
-            ...cached.data.rss.channel,
-            item: enhancedItems ?? [],
-          },
-        },
-      };
-      return enhancedData;
-    }
-
-    // No cache - return undefined so UI shows empty state
-    return undefined;
-  };
-
-  // Basic fetch of a feed (without preload) - used internally
-  private fetchFeedBasic = async (
-    url: string,
-  ): Promise<FeedData | undefined> => {
-    try {
-      const feed = await this.getFeedByUrl(url);
-
-      const res = await fetch(url, { method: "GET" });
-      if (!res.ok) {
-        throw new Error(
-          `Failed to fetch feed from ${url}: ${res.status} ${res.statusText}`,
-        );
-      }
-
-      const data = await res.text();
-      const { feedType, channel } = parseAndNormalizeFeed(data);
-      const items = this.filterByDate(channel.item, feed?.oldestArticle);
-
-      const feedContent: FeedData = {
-        date: new Date(),
-        feedType,
-        rss: {
-          channel: {
-            ...channel,
-            title: channel.title,
-            description: channel.description,
-            language: channel.language,
-            link: channel.link,
-            lastBuildDate: channel.lastBuildDate,
-            item: items ?? [],
-          },
-        },
-      };
-
-      // Cache the feed
-      try {
-        await this.cache.set(url, feedContent);
-      } catch (cacheError) {
-        console.warn(`Failed to cache feed ${url}:`, cacheError);
-      }
-
-      return feedContent;
-    } catch (error) {
-      console.error(`Error fetching feed content for ${url}:`, error);
-      return undefined;
-    }
-  };
-
-  // Get ALL updated feeds (basic metadata of each article)
-  fetchAllFeeds = async (): Promise<FeedData[]> => {
-    const feeds = await this.getFeeds();
-    if (!feeds || feeds.length === 0) return [];
-
-    const results: FeedData[] = [];
-
-    for (const feed of feeds) {
-      const feedContent = await this.fetchFeedBasic(feed.url);
-      if (feedContent) {
-        results.push(feedContent);
-      }
-    }
-
-    return results;
-  };
-
-  // Orchestras: fetchAllFeeds -> setRanking
-  // Stage 2: Top-5 article preloader is DISABLED (will be re-enabled in Stage 3 with native downloader)
-  fetchAndCacheAllFeedsRanked = async (
-    onProgress?: (
-      name: "FETCHING" | "PRELOADING",
-      current: number,
-      total: number,
-    ) => void,
-  ): Promise<void> => {
-    const feeds = await this.getFeeds();
-    if (!feeds || feeds.length === 0) return;
-
-    const feedsData: FeedData[] = [];
-
-    // 1. Fetch all feeds
-    for (let i = 0; i < feeds.length; i++) {
-      onProgress?.("FETCHING", i + 1, feeds.length);
-      const feedContent = await this.fetchFeedBasic(feeds[i].url);
-      if (feedContent) {
-        feedsData.push(feedContent);
-      }
-    }
-
-    // 2. Apply ranking and get scoreMap (for backward compatibility)
-    const { scoreMap } = await this.ranking.setRanking(feedsData);
-
-    // Stage 2: SKIP preload step (top-5 automatic article download)
-    // This will be re-enabled in Stage 3 with the native article downloader
-    // The ranking is still computed for backward compatibility but not used for preloading
-    void scoreMap; // Mark as intentionally unused
-  };
+  constructor(private storage: StorageService) {}
 
   getFeeds = async (_?: undefined): Promise<Feed[] | undefined> => {
     const feedsData = await this.storage.getItem<Feed[]>(FEEDS_LIST_KEY);
@@ -204,7 +66,6 @@ export class FeedService {
       }
 
       const updatedFeeds = feeds.filter((f) => f.id !== feed.id);
-      await this.cache.delete(feed.url);
       return await this.saveFeeds(updatedFeeds);
     } catch {
       throw new Error("Feed cannot be deleted");
@@ -267,81 +128,10 @@ export class FeedService {
     return true;
   };
 
-  private sanitizeContent(content: string): string {
-    if (this.isHTML(content)) {
-      return sanitize(content, { allowedTags: [] });
-    } else {
-      return content;
-    }
-  }
-
-  private isHTML(str: string): boolean {
-    const htmlPattern = /<[a-z][\s\S]*>/i;
-    return htmlPattern.test(str);
-  }
-
-  private filterByDate(
-    items: FeedContentItem[] | undefined,
-    oldestArticle: number | undefined,
-  ): FeedContentItem[] | undefined {
-    if (!items) return undefined;
-
-    const threshold = new Date(
-      Date.now() - (oldestArticle ?? 1) * 24 * 60 * 60 * 1000,
-    );
-
-    return items.filter((item) => {
-      if (!item.pubDate) return true;
-
-      const itemDate = new Date(item.pubDate);
-      if (isNaN(itemDate.getTime())) return true;
-
-      return itemDate.getTime() > threshold.getTime();
-    });
-  }
-
-  private enhanceItemsWithCache = async (
-    items: FeedContentItem[] | undefined,
-  ): Promise<FeedContentItem[] | undefined> => {
-    if (!items) return undefined;
-
-    const metadataResults = await Promise.all(
-      items.map(async (item) => {
-        try {
-          const metadata = await this.articleCache.getMetadata(item.link);
-          return { item, metadata };
-        } catch {
-          return { item, metadata: null };
-        }
-      }),
-    );
-
-    return metadataResults.map(({ item, metadata }) => {
-      if (!metadata) return item;
-
-      const hasValidByline =
-        typeof metadata.byline === "string" &&
-        metadata.byline.trim().length > 0;
-
-      return {
-        ...item,
-        ...(hasValidByline && { author: metadata.byline }),
-        ...(metadata.heroImage && { heroImage: metadata.heroImage }),
-        ...(metadata.excerpt && { excerpt: metadata.excerpt }),
-      };
-    });
-  };
-
   clearCaches = async (onComplete?: () => void): Promise<void> => {
     await this.storage.clearCaches();
     onComplete?.();
   };
 }
 
-export const feedService = new FeedService(
-  storageService,
-  feedCacheService,
-  articleCacheService,
-  articlePreloader,
-  articleRankingService,
-);
+export const feedService = new FeedService(storageService);

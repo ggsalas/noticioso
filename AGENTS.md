@@ -29,17 +29,18 @@ Services encapsulate all business logic and data access. Each service is a class
 ```
 services/
   StorageService.ts          -- AsyncStorage abstraction
-  FeedService.ts             -- RSS fetch, XML parse, feed CRUD
-  FeedCacheService.ts        -- In-memory feed cache with LRU
-  ArticleService.ts          -- HTML fetch, Readability extraction
-  ArticleCacheService.ts     -- Article cache with metadata
-  ArticlePreloader.ts        -- Preload articles for offline reading
-  ArticleRankingService.ts  -- Rank articles by feed priority
-  FeedDiscoveryService.ts    -- Find RSS feeds from websites
+  FeedService.ts             -- The user's feed list (CRUD, import/export) in AsyncStorage
+  FeedContentService.ts      -- Reads feed content of the active generation (+ article metadata)
+  FeedRefreshService.ts      -- Triggers native refresh, applies a pending generation, 1h staleness
+  ArticleService.ts          -- Article HTML for reading (cache first, on-demand fetch)
+  ArticleCacheService.ts     -- Article HTML files + metadata
+  FeedDiscoveryService.ts    -- Find RSS feeds from websites (used when adding a feed)
 ```
 
+- Feed fetching/parsing and article pre-download are done by the native module (`modules/FeedRefreshModule`), not by JS services
+
 - Dependencies are injected via constructor WITHOUT default values
-- The singleton export passes all required dependencies explicitly (e.g. `export const feedService = new FeedService(storageService, feedCacheService, articleCacheService, articlePreloader, articleRankingService)`)
+- The singleton export passes all required dependencies explicitly (e.g. `export const feedContentService = new FeedContentService(articleCacheService)`)
 - Tests instantiate the class directly with mock dependencies instead of using `jest.mock()`
 - IMPORTANT: Do NOT use default values in constructor parameters for classes with singleton exports - this can cause initialization order issues in JavaScript modules
 

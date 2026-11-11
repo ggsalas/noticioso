@@ -102,35 +102,4 @@ describe("ArticleService", () => {
       );
     });
   });
-
-  describe("fetchArticleContent", () => {
-    it("should return early if already cached", async () => {
-      mockHas.mockResolvedValueOnce(true);
-
-      await service.fetchArticleContent("https://example.com/cached");
-
-      expect(mockHas).toHaveBeenCalledWith("https://example.com/cached");
-      expect(mockFetch).not.toHaveBeenCalled();
-    });
-
-    it("should fetch and save on cache miss", async () => {
-      mockHas.mockResolvedValueOnce(false);
-
-      const mockHtml = "<html><head></head><body>Content</body></html>";
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        text: () => Promise.resolve(mockHtml),
-      });
-      mockSetHtml.mockResolvedValueOnce(undefined);
-
-      await service.fetchArticleContent("https://example.com/new");
-
-      expect(mockHas).toHaveBeenCalledWith("https://example.com/new");
-      expect(mockFetch).toHaveBeenCalledWith("https://example.com/new");
-      expect(mockSetHtml).toHaveBeenCalledWith(
-        "https://example.com/new",
-        mockHtml,
-      );
-    });
-  });
 });

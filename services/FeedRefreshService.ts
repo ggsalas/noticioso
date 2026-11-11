@@ -5,10 +5,8 @@ import {
   pendingRefreshRepository,
   lastFetchCompletionRepository,
   refreshRepository,
-  feedSnapshotRepository,
   getDatabase,
 } from "@/infrastructure";
-import type { Feed, FeedData } from "~/types";
 
 /**
  * FeedRefreshService orchestrates the feed refresh flow using the native module.
@@ -117,26 +115,6 @@ export class FeedRefreshService {
     const lastFetchTime = new Date(lastFetch).getTime();
 
     return lastFetchTime < oneHourAgo;
-  }
-
-  /**
-   * Get the last fetch completion timestamp
-   */
-  async getLastFetchCompletion(): Promise<string | null> {
-    return lastFetchCompletionRepository.get();
-  }
-
-  /**
-   * Get feed data from the active refresh (reads from feed_snapshots)
-   */
-  async getFeedData(feedUrl: string): Promise<FeedData | null> {
-    const active = await activeRefreshRepository.get();
-    if (!active) {
-      return null;
-    }
-
-    const snapshot = await feedSnapshotRepository.get(active.refreshId, feedUrl);
-    return snapshot?.data ?? null;
   }
 }
 

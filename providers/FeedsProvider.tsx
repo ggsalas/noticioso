@@ -10,7 +10,7 @@ import {
 import { AppState, AppStateStatus } from "react-native";
 import { feedService } from "@/services/FeedService";
 import { feedRefreshService } from "@/services/FeedRefreshService";
-import { feedCacheService } from "@/services/FeedCacheService";
+import { feedContentService } from "@/services/FeedContentService";
 import { articleCacheService } from "@/services/ArticleCacheService";
 import { activeRefreshRepository, feedSnapshotRepository } from "@/infrastructure";
 import { FEED_REFRESH_QUEUED } from "@/modules/FeedRefreshModule/src/FeedRefreshModule.types";
@@ -114,7 +114,7 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
 
     await Promise.allSettled(
       feeds.map(async (feed) => {
-        const cached = await feedCacheService.get(feed.url);
+        const cached = await feedContentService.getSnapshot(feed.url);
         if (cached) {
           counts[feed.url] = cached.data.rss?.channel?.item?.length ?? 0;
         }
@@ -296,7 +296,7 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
       // Load the applied/active refresh timestamp for the header
       // (applied_at is set transactionally when a pending refresh is applied
       // on toast tap, never by the native fetch)
-      const appliedAt = await feedCacheService.getLastFullRefresh();
+      const appliedAt = await feedContentService.getLastFullRefresh();
       setLastFullRefreshAt(appliedAt);
 
       // Check if toast should be shown
@@ -402,7 +402,7 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
       const counts = await loadCachedCounts(data || []);
       setFeedArticleCounts(counts);
       // Reload the applied timestamp (updated transactionally during apply)
-      const appliedAt = await feedCacheService.getLastFullRefresh();
+      const appliedAt = await feedContentService.getLastFullRefresh();
       setLastFullRefreshAt(appliedAt);
     }
   }, [refetchFeeds, data, loadCachedCounts]);

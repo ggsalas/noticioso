@@ -30,23 +30,6 @@ export class ArticleService {
     };
   };
 
-  // Preload: fetch and save metadata only (for feed list)
-  fetchArticleContent = async (url: string): Promise<void> => {
-    const hasCache = await articleCacheService.has(url);
-    if (hasCache) return;
-
-    const html = await this.fetchHtml(url);
-    try {
-      await articleCacheService.setHtml(url, html);
-    } catch {}
-  };
-
-  // Legacy - same as fetchArticleContent
-  fetchAndCacheHtml = async (url: string): Promise<string> => {
-    await this.fetchArticleContent(url);
-    return "";
-  };
-
   private fetchHtml = async (url: string): Promise<string> => {
     const res = await fetch(url);
 

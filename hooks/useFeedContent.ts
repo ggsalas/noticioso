@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { feedService } from "@/services/FeedService";
+import { feedContentService } from "@/services/FeedContentService";
 import { onArticleDownloadFeedComplete } from "@/infrastructure/ArticleDownloadEventSubscriber";
 import type { FeedData } from "~/types";
 
@@ -22,7 +22,7 @@ export const useFeedContent = (url: string): UseFeedContent => {
 
     try {
       setLoading(true);
-      const data = await feedService.getFeedContent(url);
+      const data = await feedContentService.getFeedContent(url);
 
       if (data) {
         setData(data);
@@ -39,7 +39,7 @@ export const useFeedContent = (url: string): UseFeedContent => {
   const refreshContent = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      const data = await feedService.getFeedContent(url);
+      const data = await feedContentService.getFeedContent(url);
       if (data) {
         setData(data);
       }

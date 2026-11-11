@@ -6,7 +6,6 @@ import {
   pendingRefreshRepository,
   lastFetchCompletionRepository,
   refreshRepository,
-  feedSnapshotRepository,
   getDatabase,
 } from "@/infrastructure";
 
@@ -29,8 +28,6 @@ const mockLastFetchCompletionRepository =
   >;
 const mockRefreshRepository =
   refreshRepository as jest.Mocked<typeof refreshRepository>;
-const mockFeedSnapshotRepository =
-  feedSnapshotRepository as jest.Mocked<typeof feedSnapshotRepository>;
 const mockGetDatabase = getDatabase as jest.MockedFunction<typeof getDatabase>;
 
 describe("FeedRefreshService", () => {
@@ -280,82 +277,6 @@ describe("FeedRefreshService", () => {
       const result = await service.shouldRefresh();
 
       expect(result).toBe(false);
-    });
-  });
-
-  describe("getLastFetchCompletion", () => {
-    it("should return last fetch completion timestamp", async () => {
-      const timestamp = "2026-01-01T00:00:00.000Z";
-      mockLastFetchCompletionRepository.get.mockResolvedValue(timestamp);
-
-      const result = await service.getLastFetchCompletion();
-
-      expect(result).toBe(timestamp);
-    });
-
-    it("should return null when no last fetch", async () => {
-      mockLastFetchCompletionRepository.get.mockResolvedValue(null);
-
-      const result = await service.getLastFetchCompletion();
-
-      expect(result).toBeNull();
-    });
-  });
-
-  describe("getFeedData", () => {
-    it("should return feed data from active refresh", async () => {
-      const mockFeedData = {
-        date: new Date(),
-        feedType: "rss" as const,
-        rss: {
-          channel: {
-            title: "Test Feed",
-            description: "Test Description",
-            language: "en",
-            link: "https://example.com",
-            lastBuildDate: "2026-01-01T00:00:00.000Z",
-            item: [],
-          },
-        },
-      };
-
-      mockActiveRefreshRepository.get.mockResolvedValue({
-        refreshId: "refresh-123",
-        appliedAt: "2026-01-01T00:00:00.000Z",
-      });
-      mockFeedSnapshotRepository.get.mockResolvedValue({
-        data: mockFeedData,
-        cachedAt: "2026-01-01T00:00:00.000Z",
-      });
-
-      const result = await service.getFeedData("https://example.com/rss");
-
-      expect(result).toEqual(mockFeedData);
-      expect(mockFeedSnapshotRepository.get).toHaveBeenCalledWith(
-        "refresh-123",
-        "https://example.com/rss"
-      );
-    });
-
-    it("should return null when no active refresh", async () => {
-      mockActiveRefreshRepository.get.mockResolvedValue(null);
-
-      const result = await service.getFeedData("https://example.com/rss");
-
-      expect(result).toBeNull();
-      expect(mockFeedSnapshotRepository.get).not.toHaveBeenCalled();
-    });
-
-    it("should return null when snapshot not found", async () => {
-      mockActiveRefreshRepository.get.mockResolvedValue({
-        refreshId: "refresh-123",
-        appliedAt: "2026-01-01T00:00:00.000Z",
-      });
-      mockFeedSnapshotRepository.get.mockResolvedValue(null);
-
-      const result = await service.getFeedData("https://example.com/rss");
-
-      expect(result).toBeNull();
     });
   });
 });
