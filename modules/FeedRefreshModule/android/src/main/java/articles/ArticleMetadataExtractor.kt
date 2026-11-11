@@ -1,4 +1,4 @@
-package com.ggsalas.noticiosoandroid.feedrefresh
+package com.ggsalas.noticiosoandroid.feedrefresh.articles
 
 import java.util.regex.Pattern
 
