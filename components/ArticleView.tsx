@@ -6,7 +6,7 @@ import { HTMLPagesNav } from "@/components/HTMLPagesNav/index";
 import { useThemeContext } from "@/theme/ThemeProvider";
 import { HandleLinkData, HTMLPagesNavActions } from "@/types";
 import { MaterialIcons } from "@expo/vector-icons";
-import { isWebUrl } from "@/validators/url";
+import { isWebUrl } from "@/lib/url";
 
 type Props = {
   article_url: string;

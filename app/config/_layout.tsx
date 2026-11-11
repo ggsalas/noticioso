@@ -2,7 +2,7 @@ import { Tabs } from "expo-router";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useThemeContext } from "@/theme/ThemeProvider";
 import { useColorScheme } from "react-native";
-import { DarkTheme, DefaultTheme } from "~/constants/navigationThemes";
+import { DarkTheme, DefaultTheme } from "~/theme/navigationThemes";
 
 export default function TabLayout() {
   const { theme } = useThemeContext();

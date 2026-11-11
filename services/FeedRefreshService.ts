@@ -1,6 +1,6 @@
 import FeedRefreshModule, { toNativeFeedInput } from "@/modules/FeedRefreshModule";
 import { feedService } from "./FeedService";
-import { pendingRefreshRepository, lastFetchCompletionRepository } from "@/infrastructure";
+import { refreshRepository } from "@/db";
 
 /**
  * Drives the native feed pipeline from JS: trigger a refresh, apply the pending
@@ -27,7 +27,7 @@ export class FeedRefreshService {
    * Check if a READY pending refresh exists (for showing toast)
    */
   async hasPendingRefresh(): Promise<boolean> {
-    const pending = await pendingRefreshRepository.get();
+    const pending = await refreshRepository.getPending();
     return pending !== null;
   }
 
@@ -49,7 +49,7 @@ export class FeedRefreshService {
    */
   async shouldRefresh(): Promise<boolean> {
     // Check last fetch completion
-    const lastFetch = await lastFetchCompletionRepository.get();
+    const lastFetch = await refreshRepository.getLastFetchCompletion();
     if (!lastFetch) {
       return true; // Never fetched
     }

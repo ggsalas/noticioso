@@ -108,6 +108,6 @@ Screens and components read from context providers and call service methods dire
 
 Self-contained modules with no framework dependencies.
 
-#### lib/horizontalNavigation
+#### lib/webview/horizontalNavigation
 
 The core of the paginated reader. Generates the HTML document injected into the WebView, including the CSS multi-column layout, theme tokens as CSS variables, and a bridge script that communicates page dimensions and user interactions back to React Native via `postMessage`.

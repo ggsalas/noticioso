@@ -1,25 +1,14 @@
 export { getDatabase, resetDatabaseForTesting, DATABASE_NAME } from "./database";
 export { runMigrations, SCHEMA_VERSION } from "./migrate";
 export {
-  ArticleCacheRepository,
-  articleCacheRepository,
-} from "./ArticleCacheRepository";
+  ArticleMetadataRepository,
+  articleMetadataRepository,
+} from "./ArticleMetadataRepository";
 export {
   FeedSnapshotRepository,
   feedSnapshotRepository,
 } from "./FeedSnapshotRepository";
-export {
-  ActiveRefreshRepository,
-  activeRefreshRepository,
-} from "./ActiveRefreshRepository";
-export {
-  PendingRefreshRepository,
-  pendingRefreshRepository,
-} from "./PendingRefreshRepository";
-export {
-  LastFetchCompletionRepository,
-  lastFetchCompletionRepository,
-} from "./LastFetchCompletionRepository";
+export { RefreshRepository, refreshRepository } from "./RefreshRepository";
 export {
   initializeDatabase,
   isDatabaseInitialized,

@@ -15,7 +15,9 @@ jest.mock("@/services/FeedService", () => ({
 
 jest.mock("@/services/FeedContentService", () => ({
   feedContentService: {
-    getSnapshot: jest.fn(),
+    getArticleCounts: jest.fn().mockResolvedValue({}),
+    getCacheCompleteness: jest.fn().mockResolvedValue({}),
+    isFeedFullyCached: jest.fn().mockResolvedValue(false),
     getFeedContent: jest.fn(),
     getLastFullRefresh: jest.fn(),
   },
@@ -30,13 +32,13 @@ jest.mock("@/services/FeedRefreshService", () => ({
   },
 }));
 
-// Mock ArticleDownloadEventSubscriber to control event emission
+// Mock the native module events to control event emission
 const mockOnArticleDownloadFeedStarted = jest.fn();
 const mockOnArticleDownloadFeedComplete = jest.fn();
 const mockOnFeedRefreshStarted = jest.fn();
 const mockOnFeedRefreshFinished = jest.fn();
 const mockOnArticleWorkerIdle = jest.fn();
-jest.mock("@/infrastructure/ArticleDownloadEventSubscriber", () => ({
+jest.mock("@/modules/FeedRefreshModule/src/events", () => ({
   onArticleDownloadFeedStarted: (callback: any) => {
     mockOnArticleDownloadFeedStarted.mockImplementation(callback);
     return { remove: jest.fn() };
@@ -56,23 +58,6 @@ jest.mock("@/infrastructure/ArticleDownloadEventSubscriber", () => ({
   onArticleWorkerIdle: (callback: any) => {
     mockOnArticleWorkerIdle.mockImplementation(callback);
     return { remove: jest.fn() };
-  },
-}));
-
-// Mock articleCacheService for cache completeness
-jest.mock("@/services/ArticleCacheService", () => ({
-  articleCacheService: {
-    getFullyCachedUrls: jest.fn().mockResolvedValue([]),
-  },
-}));
-
-// Mock activeRefreshRepository and feedSnapshotRepository
-jest.mock("@/infrastructure", () => ({
-  activeRefreshRepository: {
-    get: jest.fn().mockResolvedValue(null),
-  },
-  feedSnapshotRepository: {
-    getAllForRefresh: jest.fn().mockResolvedValue([]),
   },
 }));
 

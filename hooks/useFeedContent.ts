@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { feedContentService } from "@/services/FeedContentService";
-import { onArticleDownloadFeedComplete } from "@/infrastructure/ArticleDownloadEventSubscriber";
+import { onArticleDownloadFeedComplete } from "@/modules/FeedRefreshModule/src/events";
 import type { FeedData } from "~/types";
 
 type UseFeedContent = {

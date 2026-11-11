@@ -11,7 +11,7 @@ export interface ArticleMetadataRow {
   lastAccessedAt: string;
 }
 
-export class ArticleCacheRepository {
+export class ArticleMetadataRepository {
   async getMetadata(url: string): Promise<ArticleMetadata | null> {
     const db = await getDatabase();
     const row = await db.getFirstAsync<ArticleMetadataRow | undefined>(
@@ -29,15 +29,6 @@ export class ArticleCacheRepository {
       title: row.title || "",
       excerpt: row.excerpt || "",
     };
-  }
-
-  async has(url: string): Promise<boolean> {
-    const db = await getDatabase();
-    const row = await db.getFirstAsync<{ count: number }>(
-      "SELECT COUNT(*) as count FROM article_metadata WHERE url = ?",
-      [url]
-    );
-    return (row?.count ?? 0) > 0;
   }
 
   /**
@@ -69,4 +60,4 @@ export class ArticleCacheRepository {
   }
 }
 
-export const articleCacheRepository = new ArticleCacheRepository();
+export const articleMetadataRepository = new ArticleMetadataRepository();

@@ -2,20 +2,20 @@
  * JS side of the JS <-> native contracts (see ../../contract/README.md).
  * The Kotlin side is android/src/test/java/ContractTest.kt, reading the same files.
  */
-import { DATABASE_NAME } from "@/infrastructure/database";
+import { DATABASE_NAME } from "@/db/database";
 import {
   ARTICLE_HTML_DIRECTORY,
   articleFileName,
-  ArticleCacheService,
-} from "@/services/ArticleCacheService";
+  ArticleService,
+} from "@/services/ArticleService";
 import { FeedContentService } from "@/services/FeedContentService";
-import { activeRefreshRepository, feedSnapshotRepository } from "@/infrastructure";
+import { refreshRepository, feedSnapshotRepository } from "@/db";
 import database from "../../contract/database.json";
 import fileNames from "../../contract/article-file-names.json";
 import feedSnapshot from "../../contract/feed-snapshot.json";
 
-jest.mock("@/infrastructure", () => ({
-  activeRefreshRepository: { get: jest.fn() },
+jest.mock("@/db", () => ({
+  refreshRepository: { getActive: jest.fn() },
   feedSnapshotRepository: { get: jest.fn() },
 }));
 
@@ -34,7 +34,7 @@ describe("JS <-> native contract", () => {
   });
 
   it("feed snapshot written by native is readable as feed content", async () => {
-    (activeRefreshRepository.get as jest.Mock).mockResolvedValue({
+    (refreshRepository.getActive as jest.Mock).mockResolvedValue({
       refreshId: "r1",
       appliedAt: "2026-11-10T10:00:00.000Z",
     });
@@ -44,8 +44,8 @@ describe("JS <-> native contract", () => {
       data: feedSnapshot,
       cachedAt: "2026-11-10T09:00:00.000Z",
     });
-    const articleCache = { getMetadata: jest.fn().mockResolvedValue(null) };
-    const service = new FeedContentService(articleCache as unknown as ArticleCacheService);
+    const articles = { getMetadata: jest.fn().mockResolvedValue(null) };
+    const service = new FeedContentService(articles as unknown as ArticleService);
 
     const content = await service.getFeedContent("https://example.com/feed");
 
@@ -56,6 +56,6 @@ describe("JS <-> native contract", () => {
     expect(items[0].title).toBe('First "quoted" title');
     expect(items[0].description).toBe("Line one\nLine two");
     // Article metadata is looked up by the item link (the article URL)
-    expect(articleCache.getMetadata).toHaveBeenCalledWith("https://example.com/1");
+    expect(articles.getMetadata).toHaveBeenCalledWith("https://example.com/1");
   });
 });

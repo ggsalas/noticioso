@@ -8,7 +8,7 @@ import { NewArticlesToast } from "@/components/NewArticlesToast";
 import { usePreviousRoute } from "~/providers/PreviousRoute";
 import { useFeedsContext } from "@/providers/FeedsProvider";
 import { MaterialIcons } from "@expo/vector-icons";
-import { formatLastRefresh } from "~/formatters/timeFormatters";
+import { formatLastRefresh } from "~/lib/timeFormatters";
 import { useWebViewHighlight } from "~/hooks/useWebViewHighlight";
 
 export default function Feeds() {

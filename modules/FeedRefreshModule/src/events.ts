@@ -1,5 +1,5 @@
 import { EventSubscription } from "expo-modules-core";
-import FeedRefreshModule from "@/modules/FeedRefreshModule/src/FeedRefreshModule";
+import FeedRefreshModule from "./FeedRefreshModule";
 
 export interface ArticleDownloadFeedStartedEvent {
   refreshId: string;

@@ -1,7 +1,7 @@
-import { getDatabase, resetDatabaseForTesting, setDatabaseFactoryForTesting } from "@/infrastructure/database";
-import { RealSqliteTestDatabase } from "@/infrastructure/testing/RealSqliteTestDatabase";
-import { runMigrations, SCHEMA_VERSION } from "@/infrastructure/migrate";
-import { CREATE_TABLES_SQL_V1 } from "@/infrastructure/schema";
+import { getDatabase, resetDatabaseForTesting, setDatabaseFactoryForTesting } from "@/db/database";
+import { RealSqliteTestDatabase } from "@/db/testing/RealSqliteTestDatabase";
+import { runMigrations, SCHEMA_VERSION } from "@/db/migrate";
+import { CREATE_TABLES_SQL_V1 } from "@/db/schema";
 
 describe("Schema Migration v3", () => {
   beforeEach(async () => {

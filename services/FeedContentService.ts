@@ -1,8 +1,5 @@
-import { activeRefreshRepository, feedSnapshotRepository } from "@/infrastructure";
-import {
-  articleCacheService,
-  ArticleCacheService,
-} from "./ArticleCacheService";
+import { refreshRepository, feedSnapshotRepository } from "@/db";
+import { articleService, ArticleService } from "./ArticleService";
 import type { FeedData, FeedContentItem } from "~/types";
 
 export type FeedSnapshot = {
@@ -18,13 +15,13 @@ export type FeedSnapshot = {
  * ACTIVE generation (the one the user sees until the toast is applied).
  */
 export class FeedContentService {
-  constructor(private articleCache: ArticleCacheService) {}
+  constructor(private articles: ArticleService) {}
 
   /**
    * Raw snapshot of a feed in the active generation.
    */
   getSnapshot = async (url: string): Promise<FeedSnapshot | null> => {
-    const active = await activeRefreshRepository.get();
+    const active = await refreshRepository.getActive();
     if (!active) {
       return null;
     }
@@ -66,10 +63,80 @@ export class FeedContentService {
   };
 
   /**
+   * Number of articles each feed has in the active generation.
+   * Feeds without a snapshot are omitted.
+   */
+  getArticleCounts = async (feedUrls: string[]): Promise<Record<string, number>> => {
+    const counts: Record<string, number> = {};
+
+    await Promise.allSettled(
+      feedUrls.map(async (feedUrl) => {
+        const snapshot = await this.getSnapshot(feedUrl);
+        if (snapshot) {
+          counts[feedUrl] = snapshot.data.rss?.channel?.item?.length ?? 0;
+        }
+      }),
+    );
+
+    return counts;
+  };
+
+  /**
+   * For each feed, whether ALL its articles in the active generation are cached
+   * (metadata + HTML file). Nothing is persisted: it is derived on demand.
+   * - no snapshot for the feed -> false
+   * - snapshot with zero articles -> omitted (the UI shows no indicator)
+   */
+  getCacheCompleteness = async (feedUrls: string[]): Promise<Record<string, boolean>> => {
+    const completeness: Record<string, boolean> = {};
+
+    const active = await refreshRepository.getActive();
+    if (!active) return completeness;
+
+    const snapshots = await feedSnapshotRepository.getAllForRefresh(active.refreshId);
+    const snapshotByFeed = new Map(snapshots.map((snapshot) => [snapshot.feedUrl, snapshot]));
+
+    await Promise.allSettled(
+      feedUrls.map(async (feedUrl) => {
+        const snapshot = snapshotByFeed.get(feedUrl);
+        if (!snapshot) {
+          completeness[feedUrl] = false;
+          return;
+        }
+
+        const urls = this.articleUrls(snapshot.data);
+        if (urls.length === 0) return;
+
+        completeness[feedUrl] = await this.areAllCached(urls);
+      }),
+    );
+
+    return completeness;
+  };
+
+  /** Same check as getCacheCompleteness for a single feed (after a native per-feed event). */
+  isFeedFullyCached = async (feedUrl: string): Promise<boolean> => {
+    const snapshot = await this.getSnapshot(feedUrl);
+    const urls = snapshot ? this.articleUrls(snapshot.data) : [];
+    return urls.length > 0 && (await this.areAllCached(urls));
+  };
+
+  private articleUrls(data: FeedData): string[] {
+    return (data.rss?.channel?.item ?? [])
+      .map((item) => item.link)
+      .filter((url) => url && url.trim().length > 0);
+  }
+
+  private async areAllCached(urls: string[]): Promise<boolean> {
+    const cached = new Set(await this.articles.getFullyCachedUrls(urls));
+    return urls.every((url) => cached.has(url));
+  }
+
+  /**
    * When the active generation was applied (toast tap). Shown as "Last full update".
    */
   getLastFullRefresh = async (): Promise<string | null> => {
-    const active = await activeRefreshRepository.get();
+    const active = await refreshRepository.getActive();
     return active?.appliedAt ?? null;
   };
 
@@ -81,7 +148,7 @@ export class FeedContentService {
     const metadataResults = await Promise.all(
       items.map(async (item) => {
         try {
-          const metadata = await this.articleCache.getMetadata(item.link);
+          const metadata = await this.articles.getMetadata(item.link);
           return { item, metadata };
         } catch {
           return { item, metadata: null };
@@ -106,4 +173,4 @@ export class FeedContentService {
   };
 }
 
-export const feedContentService = new FeedContentService(articleCacheService);
+export const feedContentService = new FeedContentService(articleService);

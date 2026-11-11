@@ -5,45 +5,22 @@ import {
   useState,
   useEffect,
   useCallback,
-  useRef,
 } from "react";
-import { AppState, AppStateStatus } from "react-native";
 import { feedService } from "@/services/FeedService";
 import { feedRefreshService } from "@/services/FeedRefreshService";
 import { feedContentService } from "@/services/FeedContentService";
-import { articleCacheService } from "@/services/ArticleCacheService";
-import { activeRefreshRepository, feedSnapshotRepository } from "@/infrastructure";
-import { FEED_REFRESH_QUEUED } from "@/modules/FeedRefreshModule/src/FeedRefreshModule.types";
 import { Feed } from "@/types";
 import { useAsyncFn } from "@/hooks/useAsyncFn";
+import { useFeedCacheStatus } from "@/hooks/useFeedCacheStatus";
 import {
-  onArticleDownloadFeedStarted,
-  onArticleDownloadFeedComplete,
-  onFeedRefreshStarted,
-  onFeedRefreshFinished,
-  onArticleWorkerIdle,
-} from "@/infrastructure/ArticleDownloadEventSubscriber";
-import FeedRefreshModule from "@/modules/FeedRefreshModule";
+  useRefreshLifecycle,
+  type ArticleDownloadProgress,
+  type FeedsUpdatingState,
+} from "@/hooks/useRefreshLifecycle";
+
+export type { ArticleDownloadProgress } from "@/hooks/useRefreshLifecycle";
 
 type FeedsProviderProps = { children: ReactNode };
-
-type ProgressStatus = {
-  name: "FETCHING";
-  current: number;
-  total: number;
-};
-
-export type ArticleDownloadProgress = {
-  refreshId: string;
-  status: "fetching" | "complete";
-  feedIndex: number;
-  feedCount: number;
-  articleCount: number;
-  articleSuccessCount: number;
-  articleFailedCount: number;
-};
-
-type FeedsUpdatingState = ProgressStatus | null;
 
 type FeedsContextType = {
   loading?: FeedsUpdatingState;
@@ -93,325 +70,59 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
     runFn: refetchFeeds,
   } = useAsyncFn(feedService.getFeeds, undefined);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [feedArticleCounts, setFeedArticleCounts] = useState<
-    Record<string, number>
-  >({});
-  const [feedArticleCacheComplete, setFeedArticleCacheComplete] = useState<
-    Record<string, boolean>
-  >({});
-  const [updating, setUpdating] = useState<FeedsUpdatingState>(null);
-  const [lastFullRefreshAt, setLastFullRefreshAt] = useState<string | null>(
-    null,
-  );
-  const [shouldShowUpdateToast, setShouldShowUpdateToast] = useState(false);
-  const [articleDownloadProgress, setArticleDownloadProgress] = useState<ArticleDownloadProgress | null>(null);
-  const previousFeedUrlsRef = useRef<Set<string>>(new Set());
-  const appStateRef = useRef(AppState.currentState);
+  const [lastFullRefreshAt, setLastFullRefreshAt] = useState<string | null>(null);
 
-  // Load feed article counts from active refresh
-  const loadCachedCounts = useCallback(async (feeds: Feed[]) => {
-    const counts: Record<string, number> = {};
+  const cacheStatus = useFeedCacheStatus();
+  const { reloadCounts, reloadCompleteness, clear: clearCacheStatus } = cacheStatus;
 
-    await Promise.allSettled(
-      feeds.map(async (feed) => {
-        const cached = await feedContentService.getSnapshot(feed.url);
-        if (cached) {
-          counts[feed.url] = cached.data.rss?.channel?.item?.length ?? 0;
-        }
-      }),
-    );
+  const refresh = useRefreshLifecycle({
+    feeds: data,
+    onFeedArticlesDownloaded: cacheStatus.reloadFeedCompleteness,
+    onError: setActionError,
+  });
+  const { syncToast, dismissToast, reset: resetRefresh } = refresh;
 
-    setFeedArticleCounts(counts);
-    return counts;
-  }, []);
-
-  // Compute cache completeness for feeds based on active snapshot
-  const computeFeedCacheCompleteness = useCallback(async (feeds: Feed[]): Promise<Record<string, boolean>> => {
-    const completeness: Record<string, boolean> = {};
-
-    // Get active refresh ID
-    const activeRefresh = await activeRefreshRepository.get();
-    if (!activeRefresh) {
-      setFeedArticleCacheComplete({});
-      return completeness;
-    }
-
-    // Get all snapshots for the active refresh
-    const snapshots = await feedSnapshotRepository.getAllForRefresh(activeRefresh.refreshId);
-
-    // Build a map of feed URL to snapshot data
-    const snapshotMap = new Map<string, typeof snapshots[0]>();
-    for (const snapshot of snapshots) {
-      snapshotMap.set(snapshot.feedUrl, snapshot);
-    }
-
-    // For each feed, check if all article URLs are cached
-    await Promise.allSettled(
-      feeds.map(async (feed) => {
-        const snapshot = snapshotMap.get(feed.url);
-        if (!snapshot) {
-          completeness[feed.url] = false;
-          return;
-        }
-
-        // Extract article URLs from snapshot
-        const items = snapshot.data.rss?.channel?.item ?? [];
-        const urls = items
-          .map(item => item.link)
-          .filter(link => link && link.trim() !== "");
-
-        // If snapshot has zero article URLs, show no icon (don't set completeness)
-        if (urls.length === 0) {
-          return;
-        }
-
-        // Check if all URLs are fully cached (metadata + file)
-        const cachedUrls = await articleCacheService.getFullyCachedUrls(urls);
-        const cachedUrlSet = new Set(cachedUrls);
-
-        // Feed is complete only if it has >=1 article and every URL is cached
-        completeness[feed.url] = urls.length > 0 && urls.every(url => cachedUrlSet.has(url));
-      }),
-    );
-
-    setFeedArticleCacheComplete(completeness);
-    return completeness;
-  }, []);
-
-  // Recompute only the feed reported by the native completion event. The active
-  // snapshot remains the source for membership; metadata/files are global by URL.
-  const refreshFeedCacheCompleteness = useCallback(async (feedUrl: string) => {
-    try {
-      const activeRefresh = await activeRefreshRepository.get();
-      const snapshot = activeRefresh
-        ? await feedSnapshotRepository.get(activeRefresh.refreshId, feedUrl)
-        : null;
-      const urls = (snapshot?.data.rss?.channel?.item ?? [])
-        .map((item) => item.link)
-        .filter((url) => url && url.trim().length > 0);
-
-      const fullyCachedUrls = urls.length > 0
-        ? new Set(await articleCacheService.getFullyCachedUrls(urls))
-        : new Set<string>();
-      const isComplete = urls.length > 0 && urls.every((url) => fullyCachedUrls.has(url));
-
-      setFeedArticleCacheComplete((previous) => ({
-        ...previous,
-        [feedUrl]: isComplete,
-      }));
-    } catch (error) {
-      // This is an advisory indicator; cache/query failures should not disrupt reading.
-      console.warn(`Could not recalculate article cache status for ${feedUrl}:`, error);
-    }
-  }, []);
-
-  // Check if toast should be shown (READY pending refresh exists)
-  const checkShouldShowToast = useCallback(async () => {
-    const hasPending = await feedRefreshService.hasPendingRefresh();
-    return hasPending;
-  }, []);
-
-  // Subscribe to article download progress events
-  useEffect(() => {
-    const startedSubscription = onArticleDownloadFeedStarted((event) => {
-      // Start event: set status to 'fetching' with initial counts
-      setArticleDownloadProgress({
-        refreshId: event.refreshId,
-        status: "fetching",
-        feedIndex: 0,
-        feedCount: event.feedCount,
-        articleCount: event.articleCount,
-        articleSuccessCount: 0,
-        articleFailedCount: 0,
-      });
-    });
-
-    const completeSubscription = onArticleDownloadFeedComplete((event) => {
-      // Complete event: update progress and mark as 'complete' if this is the last feed
-      setArticleDownloadProgress((prev) => {
-        const isLastFeed = event.feedIndex === event.feedCount;
-        return {
-          refreshId: event.refreshId,
-          status: isLastFeed ? "complete" : "fetching",
-          feedIndex: event.feedIndex,
-          feedCount: event.feedCount,
-          articleCount: event.articleCount,
-          articleSuccessCount: event.articleSuccessCount,
-          articleFailedCount: event.articleFailedCount,
-        };
-      });
-
-      // Recompute only this feed; avoid rescanning every active snapshot per event.
-      refreshFeedCacheCompleteness(event.feedUrl);
-    });
-
-    return () => {
-      startedSubscription.remove();
-      completeSubscription.remove();
-    };
-  }, [refreshFeedCacheCompleteness]);
-
-  // Native feed-pass + worker lifecycle (covers queued refreshes JS didn't await)
-  useEffect(() => {
-    const refreshStarted = onFeedRefreshStarted((event) => {
-      setUpdating({ name: "FETCHING", current: 0, total: event.feedCount });
-    });
-
-    const refreshFinished = onFeedRefreshFinished(async () => {
-      setUpdating(null);
-      if (await feedRefreshService.hasPendingRefresh()) {
-        setShouldShowUpdateToast(true);
-      }
-    });
-
-    // Terminal event: emitted whenever the worker drains, including early exits
-    // (superseded generation, errors) that skip the last per-feed event.
-    const workerIdle = onArticleWorkerIdle(() => {
-      setUpdating(null);
-      setArticleDownloadProgress((prev) =>
-        prev?.status === "fetching" ? { ...prev, status: "complete" } : prev,
-      );
-    });
-
-    return () => {
-      refreshStarted.remove();
-      refreshFinished.remove();
-      workerIdle.remove();
-    };
-  }, []);
-
-  // Load initial data and check for pending refresh
+  // Everything derived from the active generation, (re)loaded when the feed list changes
   useEffect(() => {
     if (!data || data.length === 0) return;
 
-    const initData = async () => {
-      const currentUrls = new Set(data.map((f) => f.url));
-
-      // Load counts from active refresh
-      const counts = await loadCachedCounts(data);
-
-      // Compute cache completeness
-      await computeFeedCacheCompleteness(data);
-
-      // Load the applied/active refresh timestamp for the header
-      // (applied_at is set transactionally when a pending refresh is applied
-      // on toast tap, never by the native fetch)
-      const appliedAt = await feedContentService.getLastFullRefresh();
-      setLastFullRefreshAt(appliedAt);
-
-      // Check if toast should be shown
-      const shouldToast = await checkShouldShowToast();
-      setShouldShowUpdateToast(shouldToast);
-
-      // Save current URLs for next comparison
-      previousFeedUrlsRef.current = currentUrls;
+    const loadGenerationState = async () => {
+      await reloadCounts(data);
+      await reloadCompleteness(data);
+      // applied_at changes only when a pending generation is applied (toast tap)
+      setLastFullRefreshAt(await feedContentService.getLastFullRefresh());
+      await syncToast();
     };
 
-    initData();
-  }, [data, loadCachedCounts, computeFeedCacheCompleteness, checkShouldShowToast]);
-
-  // Refresh all feeds using the native worker.
-  // Never dropped: if the worker is busy (article download / reconciliation) native
-  // queues it and onFeedRefreshStarted/onFeedRefreshFinished report it later.
-  // Deliberately independent of transient UI state so stale closures can't skip it.
-  // Does NOT update counts or timestamps - those change only when the toast is tapped.
-  const refreshAllFeeds = useCallback(async () => {
-    const feeds = data;
-    if (!feeds || feeds.length === 0) return;
-
-    try {
-      const result = await feedRefreshService.refreshAllFeeds();
-      if (result === FEED_REFRESH_QUEUED) return;
-
-      // Direct run: the pass already finished; show the toast if a generation is ready
-      if (await feedRefreshService.hasPendingRefresh()) {
-        setShouldShowUpdateToast(true);
-      }
-      previousFeedUrlsRef.current = new Set(feeds.map((f) => f.url));
-    } catch (e) {
-      console.error("Failed to refresh feeds:", e);
-      setActionError("Failed to refresh feeds");
-    }
-  }, [data]);
-
-  // Show the toast for a ready generation AND refresh when stale (> 1h).
-  // A pending generation does not block a refresh: old news is useless, so a new
-  // pass supersedes an unapplied pending one (native marks it superseded).
-  const checkToastAndMaybeRefresh = useCallback(async () => {
-    if (await checkShouldShowToast()) {
-      setShouldShowUpdateToast(true);
-    }
-    if (await feedRefreshService.shouldRefresh()) {
-      await refreshAllFeeds();
-    }
-  }, [checkShouldShowToast, refreshAllFeeds]);
-
-  // On initial mount (feed list loaded)
-  const initialMountRef = useRef(true);
-  useEffect(() => {
-    if (!data || data.length === 0 || !initialMountRef.current) return;
-    initialMountRef.current = false;
-    checkToastAndMaybeRefresh();
-  }, [data, checkToastAndMaybeRefresh]);
-
-  // On returning to foreground
-  useEffect(() => {
-    const handleAppStateChange = async (nextAppState: AppStateStatus) => {
-      const cameToForeground =
-        appStateRef.current.match(/inactive|background/) && nextAppState === "active";
-      appStateRef.current = nextAppState;
-      if (!cameToForeground) return;
-
-      // Safety net for events lost while JS was paused: if native is idle,
-      // no feed pass or article download can be in progress.
-      if (!FeedRefreshModule.isWorkerBusy()) {
-        setUpdating(null);
-        setArticleDownloadProgress(null);
-      }
-
-      await checkToastAndMaybeRefresh();
-    };
-
-    const subscription = AppState.addEventListener("change", handleAppStateChange);
-    return () => subscription.remove();
-  }, [checkToastAndMaybeRefresh]);
-
-  const dismissToast = useCallback(() => {
-    setShouldShowUpdateToast(false);
-  }, []);
+    loadGenerationState();
+  }, [data, reloadCounts, reloadCompleteness, syncToast]);
 
   // Called after "Clear cache": no generation exists anymore, so every piece of
   // state derived from generations must go (counts, indicators, toast, timestamp).
   const clearFeedArticleCounts = useCallback(() => {
-    setFeedArticleCounts({});
-    setFeedArticleCacheComplete({});
-    setShouldShowUpdateToast(false);
+    clearCacheStatus();
+    resetRefresh();
     setLastFullRefreshAt(null);
-    setArticleDownloadProgress(null);
-  }, []);
+  }, [clearCacheStatus, resetRefresh]);
 
-  // Refresh cache completeness state (called on focus/return)
+  // Recompute the cache indicators (called when the feed list screen gets focus)
   const refreshActiveFeedCacheState = useCallback(async () => {
     if (data && data.length > 0) {
-      await computeFeedCacheCompleteness(data);
+      await reloadCompleteness(data);
     }
-  }, [data, computeFeedCacheCompleteness]);
+  }, [data, reloadCompleteness]);
 
-  // Apply pending refresh (toast tap handler)
+  // Apply the pending generation (toast tap)
   const refreshAndUpdateToast = useCallback(async () => {
     const applied = await feedRefreshService.applyPendingRefresh();
     // Applied, or there was nothing to apply (stale toast): hide it either way
-    setShouldShowUpdateToast(false);
+    dismissToast();
     if (applied) {
-      // Reload feeds to show new active refresh data
       await refetchFeeds();
-      const counts = await loadCachedCounts(data || []);
-      setFeedArticleCounts(counts);
-      // Reload the applied timestamp (updated transactionally during apply)
-      const appliedAt = await feedContentService.getLastFullRefresh();
-      setLastFullRefreshAt(appliedAt);
+      await reloadCounts(data || []);
+      setLastFullRefreshAt(await feedContentService.getLastFullRefresh());
     }
-  }, [refetchFeeds, data, loadCachedCounts]);
+  }, [refetchFeeds, data, reloadCounts, dismissToast]);
 
   const handleImportFeeds = async (feeds: string) => {
     try {
@@ -476,18 +187,18 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
         feeds: data,
         loading: loading ? { name: "FETCHING", current: 0, total: 0 } : null,
         error: error ?? actionError,
-        feedArticleCounts,
-        feedArticleCacheComplete,
-        updating,
+        feedArticleCounts: cacheStatus.feedArticleCounts,
+        feedArticleCacheComplete: cacheStatus.feedArticleCacheComplete,
+        updating: refresh.updating,
         lastFullRefreshAt,
-        shouldShowUpdateToast,
-        articleDownloadProgress,
+        shouldShowUpdateToast: refresh.shouldShowUpdateToast,
+        articleDownloadProgress: refresh.articleDownloadProgress,
         getFeeds: refetchFeeds,
         importFeeds: handleImportFeeds,
         updateFeeds: handleUpdateFeeds,
         addOrEditFeed: handleAddOrEditFeed,
         deleteFeed: handleDeleteFeed,
-        refreshAllFeeds,
+        refreshAllFeeds: refresh.refreshAllFeeds,
         dismissToast,
         refreshAndUpdateToast,
         clearFeedArticleCounts,

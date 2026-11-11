@@ -1,25 +1,24 @@
 import { FeedContentService } from "./FeedContentService";
-import { ArticleCacheService } from "./ArticleCacheService";
-import { activeRefreshRepository, feedSnapshotRepository } from "@/infrastructure";
+import { ArticleService } from "./ArticleService";
+import { refreshRepository, feedSnapshotRepository } from "@/db";
 
-jest.mock("@/infrastructure", () => ({
-  activeRefreshRepository: { get: jest.fn() },
-  feedSnapshotRepository: { get: jest.fn() },
+jest.mock("@/db", () => ({
+  refreshRepository: { getActive: jest.fn() },
+  feedSnapshotRepository: { get: jest.fn(), getAllForRefresh: jest.fn() },
 }));
 
-const mockActiveRefreshRepo = activeRefreshRepository as jest.Mocked<
-  typeof activeRefreshRepository
->;
+const mockRefreshRepo = refreshRepository as jest.Mocked<typeof refreshRepository>;
 const mockFeedSnapshotRepo = feedSnapshotRepository as jest.Mocked<
   typeof feedSnapshotRepository
 >;
 
 const mockArticleCache = {
   getMetadata: jest.fn(),
+  getFullyCachedUrls: jest.fn(),
 };
 
 const feedContentService = new FeedContentService(
-  mockArticleCache as unknown as ArticleCacheService,
+  mockArticleCache as unknown as ArticleService,
 );
 
 const FEED_URL = "https://example.com/feed";
@@ -52,19 +51,19 @@ const snapshot = {
 
 describe("FeedContentService", () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    jest.resetAllMocks();
   });
 
   describe("getSnapshot", () => {
     it("returns null when no active generation exists", async () => {
-      mockActiveRefreshRepo.get.mockResolvedValueOnce(null);
+      mockRefreshRepo.getActive.mockResolvedValueOnce(null);
 
       expect(await feedContentService.getSnapshot(FEED_URL)).toBeNull();
       expect(mockFeedSnapshotRepo.get).not.toHaveBeenCalled();
     });
 
     it("returns null when the active generation has no snapshot for the feed", async () => {
-      mockActiveRefreshRepo.get.mockResolvedValueOnce(activeRefresh);
+      mockRefreshRepo.getActive.mockResolvedValueOnce(activeRefresh);
       mockFeedSnapshotRepo.get.mockResolvedValueOnce(null);
 
       expect(await feedContentService.getSnapshot(FEED_URL)).toBeNull();
@@ -72,7 +71,7 @@ describe("FeedContentService", () => {
     });
 
     it("returns the snapshot of the active generation", async () => {
-      mockActiveRefreshRepo.get.mockResolvedValueOnce(activeRefresh);
+      mockRefreshRepo.getActive.mockResolvedValueOnce(activeRefresh);
       mockFeedSnapshotRepo.get.mockResolvedValueOnce(snapshot as never);
 
       expect(await feedContentService.getSnapshot(FEED_URL)).toEqual({
@@ -84,13 +83,13 @@ describe("FeedContentService", () => {
 
   describe("getFeedContent", () => {
     it("returns undefined when there is no snapshot (UI shows empty state)", async () => {
-      mockActiveRefreshRepo.get.mockResolvedValueOnce(null);
+      mockRefreshRepo.getActive.mockResolvedValueOnce(null);
 
       expect(await feedContentService.getFeedContent(FEED_URL)).toBeUndefined();
     });
 
     it("enriches items with cached article metadata", async () => {
-      mockActiveRefreshRepo.get.mockResolvedValueOnce(activeRefresh);
+      mockRefreshRepo.getActive.mockResolvedValueOnce(activeRefresh);
       mockFeedSnapshotRepo.get.mockResolvedValueOnce(snapshot as never);
       mockArticleCache.getMetadata
         .mockResolvedValueOnce({
@@ -111,7 +110,7 @@ describe("FeedContentService", () => {
     });
 
     it("keeps the item when its metadata lookup fails", async () => {
-      mockActiveRefreshRepo.get.mockResolvedValueOnce(activeRefresh);
+      mockRefreshRepo.getActive.mockResolvedValueOnce(activeRefresh);
       mockFeedSnapshotRepo.get.mockResolvedValueOnce(snapshot as never);
       mockArticleCache.getMetadata.mockRejectedValue(new Error("db error"));
 
@@ -122,15 +121,78 @@ describe("FeedContentService", () => {
     });
   });
 
+  describe("getArticleCounts", () => {
+    it("counts the items of each feed and omits feeds without snapshot", async () => {
+      mockRefreshRepo.getActive.mockResolvedValue(activeRefresh);
+      mockFeedSnapshotRepo.get.mockImplementation(async (_refreshId, feedUrl) =>
+        feedUrl === FEED_URL ? (snapshot as never) : null,
+      );
+
+      const counts = await feedContentService.getArticleCounts([FEED_URL, "https://other.com/feed"]);
+
+      expect(counts).toEqual({ [FEED_URL]: 2 });
+    });
+  });
+
+  describe("cache completeness", () => {
+    const URLS = ["https://example.com/article1", "https://example.com/article2"];
+    const emptySnapshot = {
+      ...snapshot,
+      feedUrl: "https://empty.com/feed",
+      data: { ...feedData, rss: { channel: { ...feedData.rss.channel, item: [] } } },
+    };
+
+    beforeEach(() => {
+      mockRefreshRepo.getActive.mockResolvedValue(activeRefresh);
+      mockFeedSnapshotRepo.getAllForRefresh.mockResolvedValue([snapshot, emptySnapshot] as never);
+    });
+
+    it("is true only when every article of the feed is cached", async () => {
+      mockArticleCache.getFullyCachedUrls.mockResolvedValueOnce(URLS);
+      expect(await feedContentService.getCacheCompleteness([FEED_URL])).toEqual({ [FEED_URL]: true });
+
+      mockArticleCache.getFullyCachedUrls.mockResolvedValueOnce([URLS[0]]);
+      expect(await feedContentService.getCacheCompleteness([FEED_URL])).toEqual({ [FEED_URL]: false });
+    });
+
+    it("is false for a feed without snapshot and omitted for a feed with no articles", async () => {
+      const result = await feedContentService.getCacheCompleteness([
+        "https://missing.com/feed",
+        "https://empty.com/feed",
+      ]);
+
+      expect(result).toEqual({ "https://missing.com/feed": false });
+    });
+
+    it("is empty when there is no active generation", async () => {
+      mockRefreshRepo.getActive.mockResolvedValue(null);
+
+      expect(await feedContentService.getCacheCompleteness([FEED_URL])).toEqual({});
+    });
+
+    it("checks a single feed", async () => {
+      mockFeedSnapshotRepo.get.mockResolvedValue(snapshot as never);
+
+      mockArticleCache.getFullyCachedUrls.mockResolvedValueOnce(URLS);
+      expect(await feedContentService.isFeedFullyCached(FEED_URL)).toBe(true);
+
+      mockArticleCache.getFullyCachedUrls.mockResolvedValueOnce([]);
+      expect(await feedContentService.isFeedFullyCached(FEED_URL)).toBe(false);
+
+      mockFeedSnapshotRepo.get.mockResolvedValue(null);
+      expect(await feedContentService.isFeedFullyCached(FEED_URL)).toBe(false);
+    });
+  });
+
   describe("getLastFullRefresh", () => {
     it("returns null when no active generation exists", async () => {
-      mockActiveRefreshRepo.get.mockResolvedValueOnce(null);
+      mockRefreshRepo.getActive.mockResolvedValueOnce(null);
 
       expect(await feedContentService.getLastFullRefresh()).toBeNull();
     });
 
     it("returns when the active generation was applied", async () => {
-      mockActiveRefreshRepo.get.mockResolvedValueOnce(activeRefresh);
+      mockRefreshRepo.getActive.mockResolvedValueOnce(activeRefresh);
 
       expect(await feedContentService.getLastFullRefresh()).toBe("2026-03-28T10:00:00.000Z");
     });

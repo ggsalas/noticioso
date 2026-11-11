@@ -70,7 +70,7 @@ services/
 - The HTML is **base64 encoded** before embedding because raw HTML can contain `</script>` which breaks the container tag
 - We already tried escaping with `content.replace(/<\/script/gi, '<\\/script')` and it did NOT work — articles rendered blank
 - An alternative to base64 would be stripping `<script>` tags from the HTML before embedding, but base64 is more robust
-- The encoding is done in `lib/horizontalNavigation/index.js` and decoded in `lib/articleParser.js`
+- The encoding is done in `lib/webview/horizontalNavigation/index.js` and decoded in `lib/webview/articleParser.js`
 
 ## Emulator Testing (agents can verify on-device by themselves)
 
