@@ -5,6 +5,8 @@
   "scripts": {
     "start": "expo start",
     "android": "node scripts/prepare-android-debug.js && expo run:android",
+    "android:emulator": "scripts/android-emulator.sh",
+    "android:emulator:prebuild": "scripts/android-emulator.sh --prebuild",
     "android:release-test": "node scripts/prepare-android-debug.js && expo run:android --variant release",
     "pull:android-db": "node scripts/pull-android-db.js",
     "ios": "expo run:ios",

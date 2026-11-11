@@ -15,6 +15,7 @@
 - `./android/gradlew -p android :feed-refresh-module:testDebugUnitTest` - Kotlin unit tests of the native module (JVM, no device)
 - `npm start` - Start Expo dev server
 - `npm run android` - Start on Android device
+- `npm run android:emulator` - Build + install the debug app on the local AVD `noticioso-test` and start Metro (JS hot-reloads; rerun after Kotlin/native changes). `npm run android:emulator:prebuild` regenerates `android/` first (after app.json / plugin / native dependency changes)
 - `npm run ios` - Start on iOS device
 
 ## Architecture: one app, one boundary
