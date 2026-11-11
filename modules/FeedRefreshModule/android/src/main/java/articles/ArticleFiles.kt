@@ -44,6 +44,10 @@ object ArticleFiles {
     fun createTempFile(context: Context, onDemand: Boolean = false): File =
         File.createTempFile(if (onDemand) ON_DEMAND_TEMP_PREFIX else TEMP_PREFIX, TEMP_SUFFIX, directory(context))
 
+    /** Delete every cached article file (and temp file). Returns how many were deleted. */
+    fun deleteAll(context: Context): Int =
+        directory(context).listFiles()?.count { it.isFile && it.delete() } ?: 0
+
     /** Remove temp files left by interrupted bulk downloads. Returns how many were deleted. */
     fun deleteTempFiles(context: Context): Int {
         val tempFiles = directory(context).listFiles { file ->

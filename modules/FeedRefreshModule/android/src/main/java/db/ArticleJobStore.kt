@@ -89,10 +89,6 @@ class ArticleJobStore(private val db: SQLiteDatabase) {
             total == 0 || incomplete > 0
         }
 
-    fun deleteAllJobs() {
-        db.execSQL("DELETE FROM article_download_jobs")
-    }
-
     // ---- article metadata ----
 
     fun metadataExists(url: String): Boolean =

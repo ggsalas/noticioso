@@ -512,6 +512,37 @@ describe("FeedsProvider", () => {
     });
   });
 
+  describe("clearFeedArticleCounts (after Clear cache)", () => {
+    it("resets everything derived from generations", async () => {
+      mockUseAsyncFn.mockReturnValue({
+        data: mockFeeds,
+        loading: false,
+        error: null,
+        runFn: jest.fn(),
+      });
+      (feedContentService.getLastFullRefresh as jest.Mock).mockResolvedValue(
+        "2026-10-03T10:00:00.000Z",
+      );
+      (feedRefreshService.hasPendingRefresh as jest.Mock).mockResolvedValue(true);
+
+      const { result } = renderHook(useFeedsContext, { wrapper });
+      await waitFor(() => expect(result.current.shouldShowUpdateToast).toBe(true));
+      await waitFor(() => expect(result.current.lastFullRefreshAt).not.toBeNull());
+
+      act(() => {
+        result.current.clearFeedArticleCounts();
+      });
+
+      expect(result.current.shouldShowUpdateToast).toBe(false);
+      expect(result.current.lastFullRefreshAt).toBeNull();
+      expect(result.current.feedArticleCounts).toEqual({});
+      expect(result.current.articleDownloadProgress).toBeNull();
+
+      (feedRefreshService.hasPendingRefresh as jest.Mock).mockResolvedValue(false);
+      (feedContentService.getLastFullRefresh as jest.Mock).mockResolvedValue(null);
+    });
+  });
+
   describe("refresh triggers and native worker lifecycle", () => {
     const { feedRefreshService: mockRefreshService } = jest.requireMock(
       "@/services/FeedRefreshService",

@@ -40,20 +40,6 @@ export class ArticleCacheRepository {
     return (row?.count ?? 0) > 0;
   }
 
-  async getAll(): Promise<ArticleMetadataRow[]> {
-    const db = await getDatabase();
-    return await db.getAllAsync<ArticleMetadataRow>(
-      `SELECT url, hero_image as heroImage, byline, title, excerpt,
-              fetched_at as fetchedAt, last_accessed_at as lastAccessedAt
-       FROM article_metadata`
-    );
-  }
-
-  async clear(): Promise<void> {
-    const db = await getDatabase();
-    await db.runAsync("DELETE FROM article_metadata");
-  }
-
   /**
    * Get URLs that have metadata rows from the provided list.
    * Chunks queries to stay below SQLite bind variable limits.

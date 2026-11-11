@@ -20,27 +20,6 @@ export class PendingRefreshRepository {
       readyAt: row.ready_at,
     };
   }
-
-  /**
-   * Set the pending refresh (called when native worker completes)
-   */
-  async set(refreshId: string): Promise<void> {
-    const db = await getDatabase();
-    const now = new Date().toISOString();
-    await db.runAsync(
-      `INSERT OR REPLACE INTO pending_refresh (id, refresh_id, ready_at)
-       VALUES (1, ?, ?)`,
-      [refreshId, now]
-    );
-  }
-
-  /**
-   * Clear the pending refresh (called when toast is tapped to apply)
-   */
-  async clear(): Promise<void> {
-    const db = await getDatabase();
-    await db.runAsync("DELETE FROM pending_refresh");
-  }
 }
 
 export const pendingRefreshRepository = new PendingRefreshRepository();

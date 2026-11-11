@@ -20,27 +20,6 @@ export class ActiveRefreshRepository {
       appliedAt: row.applied_at,
     };
   }
-
-  /**
-   * Set the active refresh (called when toast is tapped to apply)
-   */
-  async set(refreshId: string): Promise<void> {
-    const db = await getDatabase();
-    const now = new Date().toISOString();
-    await db.runAsync(
-      `INSERT OR REPLACE INTO active_refresh (id, refresh_id, applied_at)
-       VALUES (1, ?, ?)`,
-      [refreshId, now]
-    );
-  }
-
-  /**
-   * Clear the active refresh pointer (for testing)
-   */
-  async clear(): Promise<void> {
-    const db = await getDatabase();
-    await db.runAsync("DELETE FROM active_refresh");
-  }
 }
 
 export const activeRefreshRepository = new ActiveRefreshRepository();

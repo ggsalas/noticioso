@@ -5,11 +5,6 @@ export {
   articleCacheRepository,
 } from "./ArticleCacheRepository";
 export {
-  RefreshRepository,
-  refreshRepository,
-} from "./RefreshRepository";
-export type { RefreshState, RefreshRow, RefreshFeedRow } from "./RefreshRepository";
-export {
   FeedSnapshotRepository,
   feedSnapshotRepository,
 } from "./FeedSnapshotRepository";

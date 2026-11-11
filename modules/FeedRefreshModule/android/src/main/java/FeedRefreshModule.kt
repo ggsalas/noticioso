@@ -6,8 +6,11 @@ import com.ggsalas.noticiosoandroid.feedrefresh.articles.ArticleDownloader
 import com.ggsalas.noticiosoandroid.feedrefresh.articles.ArticleGarbageCollector
 import com.ggsalas.noticiosoandroid.feedrefresh.articles.ArticleProgressEvents
 import com.ggsalas.noticiosoandroid.feedrefresh.articles.OnDemandDownloads
+import com.ggsalas.noticiosoandroid.feedrefresh.articles.ArticleFiles
 import com.ggsalas.noticiosoandroid.feedrefresh.db.ArticleJobStore
 import com.ggsalas.noticiosoandroid.feedrefresh.db.NoticiosoDatabase
+import com.ggsalas.noticiosoandroid.feedrefresh.db.RefreshStore
+import com.ggsalas.noticiosoandroid.feedrefresh.db.Timestamps
 import com.ggsalas.noticiosoandroid.feedrefresh.feeds.FeedRefreshRunner
 import com.ggsalas.noticiosoandroid.feedrefresh.worker.SerialWorker
 import expo.modules.kotlin.modules.Module
@@ -94,15 +97,9 @@ class FeedRefreshModule : Module(), ArticleProgressEvents {
         AsyncFunction("collectGarbage") { ->
             val context = appContext.reactContext ?: return@AsyncFunction "No context"
 
-            worker.submitOnce("gc") {
-                OnDemandDownloads.exclusively { protectedUrls ->
-                    NoticiosoDatabase.open(context).use { db ->
-                        val result = ArticleGarbageCollector(context).collect(db, protectedUrls)
-                        android.util.Log.i(TAG, "Garbage collection: $result")
-                        result
-                    }
-                }
-            } ?: return@AsyncFunction "Garbage collection already queued"
+            if (!queueGarbageCollection(context)) {
+                return@AsyncFunction "Garbage collection already queued"
+            }
 
             "Garbage collection queued"
         }
@@ -123,18 +120,59 @@ class FeedRefreshModule : Module(), ArticleProgressEvents {
             }
         }
 
-        // Clear all article download jobs (used by StorageService.clearCaches)
-        AsyncFunction("clearArticleDownloadJobs") { ->
-            val context = appContext.reactContext ?: return@AsyncFunction "No context"
-            try {
-                NoticiosoDatabase.open(context).use { db -> ArticleJobStore(db).deleteAllJobs() }
-                android.util.Log.i(TAG, "Cleared all article download jobs")
-            } catch (e: Exception) {
-                android.util.Log.e(TAG, "Failed to clear article download jobs", e)
-                throw e
+        /**
+         * Apply the READY pending generation (toast tap): it becomes the active one.
+         * Runs immediately — a tiny atomic pointer swap that must not wait behind a
+         * bulk download (which checks the pointers before every article and stops
+         * working for a generation that is no longer active/pending).
+         * Then queues garbage collection. Resolves true if a generation was applied.
+         */
+        AsyncFunction("applyPendingRefresh") { ->
+            val context = appContext.reactContext ?: return@AsyncFunction false
+
+            val applied = NoticiosoDatabase.open(context).use { db ->
+                RefreshStore(db).applyPending(Timestamps.nowIso())
             }
+            if (applied) queueGarbageCollection(context)
+            applied
+        }
+
+        /**
+         * Delete all cached data: generations, jobs, article metadata and HTML files.
+         * (The user's feed list lives in AsyncStorage and is untouched.)
+         *
+         * 1. Now: clear the tables. A running article download sees its generation
+         *    is gone and stops at its next article.
+         * 2. On the serial worker (after that download has stopped): clear again
+         *    whatever the last in-flight article wrote, and delete the files.
+         * Resolves when both steps are done.
+         */
+        AsyncFunction("clearCaches") { ->
+            val context = appContext.reactContext ?: throw IllegalStateException("No context")
+
+            NoticiosoDatabase.open(context).use { db -> RefreshStore(db).clearAll() }
+
+            worker.submit {
+                OnDemandDownloads.exclusively { _ ->
+                    NoticiosoDatabase.open(context).use { db -> RefreshStore(db).clearAll() }
+                    val files = ArticleFiles.deleteAll(context)
+                    android.util.Log.i(TAG, "Caches cleared ($files files deleted)")
+                    "Caches cleared"
+                }
+            }.get()
         }
     }
+
+    private fun queueGarbageCollection(context: Context): Boolean =
+        worker.submitOnce("gc") {
+            OnDemandDownloads.exclusively { protectedUrls ->
+                NoticiosoDatabase.open(context).use { db ->
+                    val result = ArticleGarbageCollector(context).collect(db, protectedUrls)
+                    android.util.Log.i(TAG, "Garbage collection: $result")
+                    result
+                }
+            }
+        } != null
 
     /** Runs ON the worker thread: feed pass, then queue the article download behind it. */
     private fun runFeedRefresh(feeds: List<Map<String, Any>>, context: Context): String {

@@ -1,13 +1,7 @@
 import { FeedRefreshService } from "./FeedRefreshService";
 import FeedRefreshModule from "@/modules/FeedRefreshModule";
 import { feedService } from "./FeedService";
-import {
-  activeRefreshRepository,
-  pendingRefreshRepository,
-  lastFetchCompletionRepository,
-  refreshRepository,
-  getDatabase,
-} from "@/infrastructure";
+import { pendingRefreshRepository, lastFetchCompletionRepository } from "@/infrastructure";
 
 // Mock dependencies
 jest.mock("@/modules/FeedRefreshModule");
@@ -18,32 +12,17 @@ const mockFeedRefreshModule = FeedRefreshModule as jest.Mocked<
   typeof FeedRefreshModule
 >;
 const mockFeedService = feedService as jest.Mocked<typeof feedService>;
-const mockActiveRefreshRepository =
-  activeRefreshRepository as jest.Mocked<typeof activeRefreshRepository>;
 const mockPendingRefreshRepository =
   pendingRefreshRepository as jest.Mocked<typeof pendingRefreshRepository>;
 const mockLastFetchCompletionRepository =
   lastFetchCompletionRepository as jest.Mocked<
     typeof lastFetchCompletionRepository
   >;
-const mockRefreshRepository =
-  refreshRepository as jest.Mocked<typeof refreshRepository>;
-const mockGetDatabase = getDatabase as jest.MockedFunction<typeof getDatabase>;
-
 describe("FeedRefreshService", () => {
   let service: FeedRefreshService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-
-    // Mock database with transaction support
-    const mockDb = {
-      withTransactionAsync: jest.fn().mockImplementation(async (callback) => {
-        await callback();
-      }),
-      runAsync: jest.fn().mockResolvedValue(undefined),
-    };
-    mockGetDatabase.mockResolvedValue(mockDb as any);
 
     service = new FeedRefreshService();
   });
@@ -119,103 +98,14 @@ describe("FeedRefreshService", () => {
   });
 
   describe("applyPendingRefresh", () => {
-    it("should apply pending refresh and mark old active as superseded", async () => {
-      mockPendingRefreshRepository.get.mockResolvedValue({
-        refreshId: "refresh-new",
-        readyAt: "2026-01-01T00:00:00.000Z",
-      });
-      mockRefreshRepository.get.mockResolvedValue({
-        id: "refresh-new",
-        state: "ready",
-        createdAt: "2026-01-01T00:00:00.000Z",
-        completedAt: "2026-01-01T00:00:00.000Z",
-        appliedAt: null,
-        supersededAt: null,
-      });
-      mockActiveRefreshRepository.get.mockResolvedValue({
-        refreshId: "refresh-old",
-        appliedAt: "2025-12-31T00:00:00.000Z",
-      });
+    it("delegates to the native module and returns whether a generation was applied", async () => {
+      mockFeedRefreshModule.applyPendingRefresh.mockResolvedValueOnce(true);
+      expect(await service.applyPendingRefresh()).toBe(true);
 
-      const result = await service.applyPendingRefresh();
+      mockFeedRefreshModule.applyPendingRefresh.mockResolvedValueOnce(false);
+      expect(await service.applyPendingRefresh()).toBe(false);
 
-      expect(mockRefreshRepository.markSuperseded).toHaveBeenCalledWith(
-        "refresh-old"
-      );
-      expect(mockActiveRefreshRepository.set).toHaveBeenCalledWith(
-        "refresh-new"
-      );
-      expect(mockRefreshRepository.markApplied).toHaveBeenCalledWith(
-        "refresh-new"
-      );
-      expect(mockPendingRefreshRepository.clear).toHaveBeenCalled();
-      expect(result).toBe(true);
-      // Stage 4: GC runs after a successful apply
-      expect(mockFeedRefreshModule.collectGarbage).toHaveBeenCalledTimes(1);
-    });
-
-    it("should apply pending refresh when no active exists", async () => {
-      mockPendingRefreshRepository.get.mockResolvedValue({
-        refreshId: "refresh-123",
-        readyAt: "2026-01-01T00:00:00.000Z",
-      });
-      mockRefreshRepository.get.mockResolvedValue({
-        id: "refresh-123",
-        state: "ready",
-        createdAt: "2026-01-01T00:00:00.000Z",
-        completedAt: "2026-01-01T00:00:00.000Z",
-        appliedAt: null,
-        supersededAt: null,
-      });
-      mockActiveRefreshRepository.get.mockResolvedValue(null);
-
-      const result = await service.applyPendingRefresh();
-
-      expect(mockRefreshRepository.markSuperseded).not.toHaveBeenCalled();
-      expect(mockActiveRefreshRepository.set).toHaveBeenCalledWith(
-        "refresh-123"
-      );
-      expect(mockRefreshRepository.markApplied).toHaveBeenCalledWith(
-        "refresh-123"
-      );
-      expect(mockPendingRefreshRepository.clear).toHaveBeenCalled();
-      expect(result).toBe(true);
-    });
-
-    it("should return false when no pending refresh", async () => {
-      mockPendingRefreshRepository.get.mockResolvedValue(null);
-
-      const result = await service.applyPendingRefresh();
-
-      expect(result).toBe(false);
-      expect(mockActiveRefreshRepository.set).not.toHaveBeenCalled();
-      expect(mockRefreshRepository.markApplied).not.toHaveBeenCalled();
-      expect(mockPendingRefreshRepository.clear).not.toHaveBeenCalled();
-      expect(mockFeedRefreshModule.collectGarbage).not.toHaveBeenCalled();
-    });
-
-    it("should still apply when queuing garbage collection fails", async () => {
-      mockPendingRefreshRepository.get.mockResolvedValue({
-        refreshId: "refresh-123",
-        readyAt: "2026-01-01T00:00:00.000Z",
-      });
-      mockRefreshRepository.get.mockResolvedValue({
-        id: "refresh-123",
-        state: "ready",
-        createdAt: "2026-01-01T00:00:00.000Z",
-        completedAt: "2026-01-01T00:00:00.000Z",
-        appliedAt: null,
-        supersededAt: null,
-      });
-      mockActiveRefreshRepository.get.mockResolvedValue(null);
-      mockFeedRefreshModule.collectGarbage.mockRejectedValueOnce(new Error("boom"));
-      const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
-
-      const result = await service.applyPendingRefresh();
-      await Promise.resolve();
-
-      expect(result).toBe(true);
-      warn.mockRestore();
+      expect(mockFeedRefreshModule.applyPendingRefresh).toHaveBeenCalledTimes(2);
     });
   });
 

@@ -380,9 +380,14 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
     setShouldShowUpdateToast(false);
   }, []);
 
+  // Called after "Clear cache": no generation exists anymore, so every piece of
+  // state derived from generations must go (counts, indicators, toast, timestamp).
   const clearFeedArticleCounts = useCallback(() => {
     setFeedArticleCounts({});
     setFeedArticleCacheComplete({});
+    setShouldShowUpdateToast(false);
+    setLastFullRefreshAt(null);
+    setArticleDownloadProgress(null);
   }, []);
 
   // Refresh cache completeness state (called on focus/return)
@@ -395,8 +400,9 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
   // Apply pending refresh (toast tap handler)
   const refreshAndUpdateToast = useCallback(async () => {
     const applied = await feedRefreshService.applyPendingRefresh();
+    // Applied, or there was nothing to apply (stale toast): hide it either way
+    setShouldShowUpdateToast(false);
     if (applied) {
-      setShouldShowUpdateToast(false);
       // Reload feeds to show new active refresh data
       await refetchFeeds();
       const counts = await loadCachedCounts(data || []);

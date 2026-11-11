@@ -24,9 +24,12 @@ class FeedRefreshModule extends NativeModule<FeedRefreshModuleEvents> {
     return 'Web platform not supported';
   }
 
-  async clearArticleDownloadJobs(): Promise<void> {
-    // Web stub - no-op on web platform
-    return;
+  async applyPendingRefresh(): Promise<boolean> {
+    return false;
+  }
+
+  async clearCaches(): Promise<string> {
+    return 'Web platform not supported';
   }
 }
 

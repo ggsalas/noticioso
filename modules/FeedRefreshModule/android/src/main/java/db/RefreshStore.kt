@@ -102,6 +102,70 @@ class RefreshStore(private val db: SQLiteDatabase) {
         )
     }
 
+    // ---- applying the pending generation (toast tap) ----
+
+    /**
+     * Make the READY pending generation the active one, atomically:
+     * the previous active becomes superseded, the pointer moves, pending is cleared.
+     * Returns false (and changes nothing) if there is no READY pending generation.
+     */
+    fun applyPending(now: String): Boolean {
+        db.beginTransaction()
+        try {
+            val pendingId = pendingRefreshId() ?: return false
+            val isReady = db.rawQuery(
+                "SELECT 1 FROM refreshes WHERE id = ? AND state = 'ready'",
+                arrayOf(pendingId)
+            ).use { it.moveToFirst() }
+            if (!isReady) return false
+
+            activeRefreshId()?.let { oldActiveId ->
+                db.execSQL(
+                    "UPDATE refreshes SET state = 'superseded', superseded_at = ? WHERE id = ?",
+                    arrayOf(now, oldActiveId)
+                )
+            }
+            db.execSQL(
+                "INSERT OR REPLACE INTO active_refresh (id, refresh_id, applied_at) VALUES (1, ?, ?)",
+                arrayOf(pendingId, now)
+            )
+            db.execSQL(
+                "UPDATE refreshes SET state = 'applied', applied_at = ? WHERE id = ?",
+                arrayOf(now, pendingId)
+            )
+            db.execSQL("DELETE FROM pending_refresh")
+
+            db.setTransactionSuccessful()
+            return true
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    // ---- clearing everything (Settings > clear caches) ----
+
+    /**
+     * Delete every generation, pointer, job and article metadata row, atomically.
+     * With the pointers gone, a running article download stops at its next
+     * article (isStillRelevant becomes false). The user's feed list is not here
+     * (it lives in AsyncStorage) and is never touched.
+     */
+    fun clearAll() {
+        db.beginTransaction()
+        try {
+            for (table in listOf(
+                "pending_refresh", "active_refresh", "last_fetch_completion",
+                "article_download_jobs", "feed_snapshots", "refresh_feeds",
+                "refreshes", "article_metadata"
+            )) {
+                db.execSQL("DELETE FROM $table")
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
     // ---- reading a generation ----
 
     /** All feeds of a generation in configured order (including failed ones). */

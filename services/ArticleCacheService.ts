@@ -44,20 +44,6 @@ export class ArticleCacheService {
     return new File(htmlCacheDir, `${safeName}.html`).uri;
   };
 
-  // Clear file cache
-  clearFileCache = async (): Promise<void> => {
-    try {
-      if (htmlCacheDir.exists) {
-        const files = htmlCacheDir.list();
-        for (const file of files) {
-          file.delete();
-        }
-      }
-    } catch (error) {
-      console.warn("Failed to clear file cache:", error);
-    }
-  };
-
   /**
    * Get URLs from the provided list that have both metadata row AND final HTML file.
    * Used for cache completeness checks.
