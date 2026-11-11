@@ -78,7 +78,7 @@ class ArticleDownloadWorker(
 
     /** What to download for a generation. */
     private class Plan(
-        val feeds: List<String>,                      // all feeds, configured order
+        val feeds: List<String>,                      // feeds with articles, configured order
         val urlsByFeed: Map<String, List<String>>,    // every URL each feed lists
         val primaryByFeed: Map<String, List<String>>, // deduped: URLs each feed owns
         val articleCount: Int
@@ -104,7 +104,9 @@ class ArticleDownloadWorker(
             }
         }
 
-        return Plan(feeds, urlsByFeed, primaryByFeed, seen.size)
+        // A feed without articles (e.g. its fetch failed and it has no previous
+        // snapshot) has nothing to download and does not count in the progress.
+        return Plan(feeds.filter { urlsByFeed[it]!!.isNotEmpty() }, urlsByFeed, primaryByFeed, seen.size)
     }
 
     private fun processGeneration(refreshId: String, db: SQLiteDatabase): String {
@@ -112,15 +114,8 @@ class ArticleDownloadWorker(
         val jobs = ArticleJobStore(db)
 
         val plan = plan(refreshId, refreshes)
+        // No events: the worker's idle event ends the progress in the UI
         if (plan.feeds.isEmpty()) {
-            return "No feeds found"
-        }
-
-        if (plan.articleCount == 0) {
-            // Still report every feed so the UI can finish its progress
-            for ((index, feedUrl) in plan.feeds.withIndex()) {
-                events.feedCompleted(refreshId, feedUrl, index + 1, plan.feeds.size, 0, 0, 0)
-            }
             return "No articles found"
         }
 
@@ -133,8 +128,12 @@ class ArticleDownloadWorker(
             }
         }
 
-        for ((_, urls) in plan.primaryByFeed) {
-            for (url in urls) {
+        // Feed by feed, in configured order, reporting each one as soon as it is
+        // done. A URL shared with an earlier feed was already downloaded by it.
+        var totalSuccess = 0
+        var totalFailed = 0
+        for ((index, feedUrl) in plan.feeds.withIndex()) {
+            for (url in plan.primaryByFeed[feedUrl] ?: emptyList()) {
                 // Checked before every article so we stop promptly when a newer
                 // generation replaces this one mid-run (toast apply / new refresh).
                 if (!refreshes.isStillRelevant(refreshId)) {
@@ -152,12 +151,7 @@ class ArticleDownloadWorker(
                     jobs.markFailed(refreshId, url, e.message ?: "Unknown error")
                 }
             }
-        }
 
-        // Report every feed with its outcome
-        var totalSuccess = 0
-        var totalFailed = 0
-        for ((index, feedUrl) in plan.feeds.withIndex()) {
             val urls = plan.urlsByFeed[feedUrl] ?: emptyList()
             var success = 0
             var failed = 0

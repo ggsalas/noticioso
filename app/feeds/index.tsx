@@ -162,7 +162,11 @@ export default function Feeds() {
             const workerLabel = isUpdatingFeeds
               ? "Updating feeds"
               : isFetchingArticles
-                ? `Fetching articles ${articleDownloadProgress.feedIndex}/${articleDownloadProgress.feedCount}`
+                ? // feedIndex = feeds already done, so the one downloading now is the next
+                  `Downloading articles for feed ${Math.min(
+                    articleDownloadProgress.feedIndex + 1,
+                    articleDownloadProgress.feedCount,
+                  )}/${articleDownloadProgress.feedCount}`
                 : null;
 
             return (

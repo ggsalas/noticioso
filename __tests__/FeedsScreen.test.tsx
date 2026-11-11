@@ -146,7 +146,7 @@ describe("Feeds screen (app/feeds)", () => {
     render(<Feeds />);
 
     expect(screen.getByTestId("html-pages-nav")).toBeTruthy();
-    expect(screen.getByText("Fetching articles 2/5")).toBeTruthy();
+    expect(screen.getByText("Downloading articles for feed 3/5")).toBeTruthy();
   });
 
   it("shows the last full update time when not updating", () => {
