@@ -2,7 +2,6 @@ package com.ggsalas.noticiosoandroid.feedrefresh.articles
 
 import android.content.Context
 import java.io.File
-import java.net.URLEncoder
 
 /**
  * Where article HTML lives on disk: `<cacheDir>/article-html/<name>.html`.
@@ -21,18 +20,22 @@ object ArticleFiles {
     private const val ON_DEMAND_TEMP_PREFIX = "ondemand-"
     private const val TEMP_SUFFIX = ".html.tmp"
 
-    /** Pure function (no Android dependency) so it can be unit-tested against JS vectors. */
+    /**
+     * Pure function (no Android dependency), tested against the shared vectors in
+     * contract/article-file-names.json.
+     *
+     * Every UTF-16 code unit outside [a-zA-Z0-9] becomes "_" — per code unit, like
+     * the JS regex, so a character outside the BMP (e.g. an emoji) yields TWO
+     * underscores. The result only contains [a-zA-Z0-9_], which
+     * encodeURIComponent leaves untouched, so no further encoding is needed.
+     */
     fun fileNameFor(url: String): String {
-        // Step 1: replace non-alphanumeric with underscore (JS regex /[^a-zA-Z0-9]/g)
-        val replaced = url.replace(Regex("[^a-zA-Z0-9]"), "_")
-
-        // Step 2: match JS encodeURIComponent. URLEncoder uses form encoding
-        // (space -> '+', '~' -> %7E), so normalize those two differences.
-        val encoded = URLEncoder.encode(replaced, "UTF-8")
-            .replace("+", "%20")
-            .replace("%7E", "~")
-
-        return "$encoded.html"
+        val safeName = buildString(url.length) {
+            for (c in url) {
+                append(if (c in 'a'..'z' || c in 'A'..'Z' || c in '0'..'9') c else '_')
+            }
+        }
+        return "$safeName.html"
     }
 
     fun directory(context: Context): File =

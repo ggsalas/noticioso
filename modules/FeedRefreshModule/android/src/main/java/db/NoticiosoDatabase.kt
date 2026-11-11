@@ -11,10 +11,10 @@ import java.util.TimeZone
 /**
  * The SQLite database shared with JS (expo-sqlite).
  *
- * CONTRACT with JS (`infrastructure/database.ts`): expo-sqlite opens databases in
- * `<filesDir>/SQLite/<name>`. If either side changes the name or folder, native
- * silently opens a different, empty database. Schema and migrations are owned by JS
- * and run at app start, before any native function is called.
+ * CONTRACT with JS (`infrastructure/database.ts`), pinned by contract/database.json:
+ * expo-sqlite opens databases in `<filesDir>/SQLite/<name>`. If either side changes
+ * the name or folder, native silently opens a different, empty database. Schema and
+ * migrations are owned by JS and run at app start, before any native function is called.
  */
 object NoticiosoDatabase {
     const val DIRECTORY = "SQLite"

@@ -1,6 +1,7 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 
-// Stable, explicit DB filename shared by expo-sqlite (JS) and the Kotlin module.
+// CONTRACT with native (db/NoticiosoDatabase.kt), pinned by
+// modules/FeedRefreshModule/contract/database.json: both runtimes open this file.
 export const DATABASE_NAME = "noticioso.db";
 
 export type DatabaseFactory = () => Promise<SQLiteDatabase>;

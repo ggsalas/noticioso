@@ -2,8 +2,16 @@ import { articleCacheRepository, ArticleCacheRepository } from "@/infrastructure
 import { Paths, File, Directory } from "expo-file-system";
 import type { ArticleMetadata } from "~/types";
 
-// File system directory for full HTML
-const htmlCacheDir = new Directory(Paths.cache, "article-html");
+// CONTRACT with native (articles/ArticleFiles.kt), pinned by
+// modules/FeedRefreshModule/contract/article-file-names.json: both runtimes read
+// and write the same files, so folder and file name must be computed identically.
+export const ARTICLE_HTML_DIRECTORY = "article-html";
+
+export function articleFileName(url: string): string {
+  return `${encodeURIComponent(url.replace(/[^a-zA-Z0-9]/g, "_"))}.html`;
+}
+
+const htmlCacheDir = new Directory(Paths.cache, ARTICLE_HTML_DIRECTORY);
 
 /**
  * Read access to the article cache: HTML files in `<cache>/article-html/` and
@@ -38,10 +46,8 @@ export class ArticleCacheService {
     }
   };
 
-  // CONTRACT with native (ArticleFiles.kt): both sides must compute the same name
   private getFilePath = (url: string): string => {
-    const safeName = encodeURIComponent(url.replace(/[^a-zA-Z0-9]/g, "_"));
-    return new File(htmlCacheDir, `${safeName}.html`).uri;
+    return new File(htmlCacheDir, articleFileName(url)).uri;
   };
 
   /**

@@ -1,0 +1,33 @@
+{
+  "directory": "article-html",
+  "cases": [
+    {
+      "url": "https://example.com/news/2026/11/my-article/",
+      "fileName": "https___example_com_news_2026_11_my_article_.html"
+    },
+    {
+      "url": "https://hnrss.org/item?id=123&ref=a+b#top",
+      "fileName": "https___hnrss_org_item_id_123_ref_a_b_top.html"
+    },
+    {
+      "url": "https://elpais.com/españa/café",
+      "fileName": "https___elpais_com_espa_a_caf_.html"
+    },
+    {
+      "url": "http://example.com/a b~c.html",
+      "fileName": "http___example_com_a_b_c_html.html"
+    },
+    {
+      "url": "https://example.com/path_with_underscore/UPPER-lower.123",
+      "fileName": "https___example_com_path_with_underscore_UPPER_lower_123.html"
+    },
+    {
+      "url": "https://example.com/?q=%20encoded%2Fvalue",
+      "fileName": "https___example_com__q__20encoded_2Fvalue.html"
+    },
+    {
+      "url": "https://example.com/日本語/emoji-😀",
+      "fileName": "https___example_com_____emoji___.html"
+    }
+  ]
+}
