@@ -22,7 +22,11 @@ import com.ggsalas.noticiosoandroid.feedrefresh.feeds.extractArticleLinks
  */
 class ArticleGarbageCollector(private val context: Context) {
 
-    fun collect(db: SQLiteDatabase): String {
+    /**
+     * @param protectedUrls URLs to keep even if no kept snapshot references them
+     *   (articles the user opened on demand in this session).
+     */
+    fun collect(db: SQLiteDatabase, protectedUrls: Set<String> = emptySet()): String {
         val refreshes = RefreshStore(db)
         val articles = ArticleJobStore(db)
 
@@ -31,7 +35,7 @@ class ArticleGarbageCollector(private val context: Context) {
 
         // URLs the kept generations reference. If any snapshot can't be parsed we
         // don't know what is in use, so no article is deleted.
-        val referencedUrls = mutableSetOf<String>()
+        val referencedUrls = protectedUrls.toMutableSet()
         var referencesKnown = true
         for (refreshId in keep) {
             for (json in refreshes.snapshotJsons(refreshId)) {

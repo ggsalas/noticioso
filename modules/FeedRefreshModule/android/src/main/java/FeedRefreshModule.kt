@@ -2,8 +2,10 @@ package com.ggsalas.noticiosoandroid.feedrefresh
 
 import android.content.Context
 import com.ggsalas.noticiosoandroid.feedrefresh.articles.ArticleDownloadWorker
+import com.ggsalas.noticiosoandroid.feedrefresh.articles.ArticleDownloader
 import com.ggsalas.noticiosoandroid.feedrefresh.articles.ArticleGarbageCollector
 import com.ggsalas.noticiosoandroid.feedrefresh.articles.ArticleProgressEvents
+import com.ggsalas.noticiosoandroid.feedrefresh.articles.OnDemandDownloads
 import com.ggsalas.noticiosoandroid.feedrefresh.db.ArticleJobStore
 import com.ggsalas.noticiosoandroid.feedrefresh.db.NoticiosoDatabase
 import com.ggsalas.noticiosoandroid.feedrefresh.feeds.FeedRefreshRunner
@@ -93,14 +95,32 @@ class FeedRefreshModule : Module(), ArticleProgressEvents {
             val context = appContext.reactContext ?: return@AsyncFunction "No context"
 
             worker.submitOnce("gc") {
-                NoticiosoDatabase.open(context).use { db ->
-                    val result = ArticleGarbageCollector(context).collect(db)
-                    android.util.Log.i(TAG, "Garbage collection: $result")
-                    result
+                OnDemandDownloads.exclusively { protectedUrls ->
+                    NoticiosoDatabase.open(context).use { db ->
+                        val result = ArticleGarbageCollector(context).collect(db, protectedUrls)
+                        android.util.Log.i(TAG, "Garbage collection: $result")
+                        result
+                    }
                 }
             } ?: return@AsyncFunction "Garbage collection already queued"
 
             "Garbage collection queued"
+        }
+
+        /**
+         * Download ONE article now (the user opened it and it is not cached).
+         * Same code path as the bulk download (HTML via temp file + atomic rename,
+         * metadata to SQLite) but NOT queued on the serial worker, so the reader
+         * never waits behind a bulk download. Rejects if the download fails.
+         */
+        AsyncFunction("downloadArticle") { url: String ->
+            val context = appContext.reactContext ?: throw IllegalStateException("No context")
+
+            OnDemandDownloads.download(url) {
+                NoticiosoDatabase.open(context).use { db ->
+                    ArticleDownloader(context, onDemand = true).downloadAndPersist(url, ArticleJobStore(db))
+                }
+            }
         }
 
         // Clear all article download jobs (used by StorageService.clearCaches)

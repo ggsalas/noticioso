@@ -4,9 +4,6 @@ import { ArticleCacheRepository } from "../infrastructure/ArticleCacheRepository
 const mockRepository = {
   has: jest.fn(),
   getMetadata: jest.fn(),
-  setMetadata: jest.fn(),
-  updateLastAccessed: jest.fn(),
-  delete: jest.fn(),
 };
 
 const articleCacheService = new ArticleCacheService(
@@ -69,38 +66,6 @@ describe("ArticleCacheService", () => {
       );
 
       expect(result).toEqual(mockMetadata);
-    });
-  });
-
-  describe("setHtml", () => {
-    it("should extract metadata and save to repository", async () => {
-      const mockHtml = `
-        <html>
-          <head>
-            <meta property="og:image" content="https://example.com/og-image.jpg">
-            <meta name="author" content="Test Author">
-            <meta property="og:title" content="Article Title">
-            <meta property="og:description" content="Article description">
-          </head>
-        </html>
-      `;
-
-      mockRepository.setMetadata.mockResolvedValue(undefined);
-
-      await articleCacheService.setHtml("https://example.com/new", mockHtml);
-
-      // Should save metadata to repository
-      expect(mockRepository.setMetadata).toHaveBeenCalledWith(
-        "https://example.com/new",
-        expect.objectContaining({
-          heroImage: "https://example.com/og-image.jpg",
-          byline: "Test Author",
-          title: "Article Title",
-          excerpt: "Article description",
-          fetchedAt: expect.any(String),
-          lastAccessedAt: expect.any(String),
-        }),
-      );
     });
   });
 });

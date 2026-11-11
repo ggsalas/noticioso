@@ -1,4 +1,5 @@
-import { articleCacheService } from "./ArticleCacheService";
+import FeedRefreshModule from "@/modules/FeedRefreshModule";
+import { articleCacheService, ArticleCacheService } from "./ArticleCacheService";
 
 export type ArticleData = {
   rawHtml: string;
@@ -8,18 +9,35 @@ export type ArticleData = {
   siteName?: string;
 };
 
+/** Downloads one article into the shared cache (HTML file + metadata). */
+export type ArticleDownloadFn = (url: string) => Promise<unknown>;
+
+/**
+ * Article content for reading.
+ *
+ * JS only READS the article cache. Downloading (HTML + metadata) is done by the
+ * native module, both for the bulk pre-download and for this on-demand path, so
+ * there is a single implementation of "download and store an article".
+ */
 export class ArticleService {
-  // Get article data - raw HTML (stripped) + metadata from cache
+  constructor(
+    private cache: ArticleCacheService,
+    private downloadArticle: ArticleDownloadFn,
+  ) {}
+
   getArticle = async (url: string): Promise<ArticleData> => {
-    // Try cache first
-    let html = await articleCacheService.getHtml(url);
+    let html = await this.cache.getHtml(url);
 
     if (!html) {
-      html = await this.fetchHtml(url);
-      await articleCacheService.setHtml(url, html);
+      // Not cached yet: native downloads it, then we read it back
+      await this.downloadArticle(url);
+      html = await this.cache.getHtml(url);
+      if (!html) {
+        throw new Error(`Article was downloaded but could not be read: ${url}`);
+      }
     }
 
-    const metadata = await articleCacheService.getMetadata(url);
+    const metadata = await this.cache.getMetadata(url);
 
     return {
       rawHtml: html,
@@ -28,18 +46,6 @@ export class ArticleService {
       byline: metadata?.byline,
       siteName: this.extractSiteName(html),
     };
-  };
-
-  private fetchHtml = async (url: string): Promise<string> => {
-    const res = await fetch(url);
-
-    if (!res.ok) {
-      throw new Error(
-        `Failed to fetch article from ${url}: ${res.status} ${res.statusText}`,
-      );
-    }
-
-    return res.text();
   };
 
   private extractSiteName(html: string): string | undefined {
@@ -55,4 +61,6 @@ export class ArticleService {
   }
 }
 
-export const articleService = new ArticleService();
+export const articleService = new ArticleService(articleCacheService, (url) =>
+  FeedRefreshModule.downloadArticle(url),
+);

@@ -9,6 +9,8 @@ declare class FeedRefreshModule extends NativeModule<FeedRefreshModuleEvents> {
   clearArticleDownloadJobs(): Promise<void>;
   isWorkerBusy(): boolean;
   collectGarbage(): Promise<string>;
+  /** Download one article into the shared cache. Resolves with the file path; rejects on failure. */
+  downloadArticle(url: string): Promise<string>;
 }
 
 // This call loads the native module object from the JSI.

@@ -11,7 +11,10 @@ import java.net.URL
  * Downloads one article: HTML to disk (temp file + atomic rename) and its
  * metadata (hero image, byline, title, excerpt) to SQLite.
  */
-class ArticleDownloader(private val context: Context) {
+class ArticleDownloader(
+    private val context: Context,
+    private val onDemand: Boolean = false
+) {
 
     fun fileFor(url: String): File = ArticleFiles.fileFor(context, url)
 
@@ -28,7 +31,7 @@ class ArticleDownloader(private val context: Context) {
             return finalFile.absolutePath
         }
 
-        val tempFile = ArticleFiles.createTempFile(context)
+        val tempFile = ArticleFiles.createTempFile(context, onDemand)
         try {
             downloadTo(url, tempFile)
 
