@@ -79,7 +79,7 @@ export function NewArticlesToast({
         {
           backgroundColor: colors.backgroundLight,
           transform: [{ translateY }],
-          bottom: sizes.s1,
+          top: sizes.s0_50,
           marginHorizontal: sizes.s1,
         },
       ]}
