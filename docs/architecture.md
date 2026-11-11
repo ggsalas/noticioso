@@ -1,222 +1,196 @@
-# Handoff — estado del refactor de refresh de feeds/artículos (Android)
+# Arquitectura — Noticioso (Android)
 
-Documento de traspaso. Su objetivo: que otro agente (o persona) pueda entender
-**dónde estamos**, **cómo está construido** y **qué sigue** sin tener que leer
-todo el repo ni el plan histórico.
+Descripción vigente de cómo está construida la app. Los planes y reportes
+originales de cada etapa están en `docs/history/`; los pendientes, en `TODO.md`.
 
-- **Fecha del traspaso:** 2026-11-10
-- **Rama:** `expo-modules-api`
-- **Último commit:** `7518cad` — *Fetch articles in the background* (working tree limpio)
-- **Plan histórico completo (decisiones, fases, addenda):** `docs/feed-refresh-worker-plan.md`
-- **Deuda técnica abierta:** `TODO.md`
+## 1. La idea en una línea
 
----
+**Una sola app con una frontera:** el módulo nativo (Kotlin) es el pipeline de
+datos y el **único que escribe**; JS es interfaz, lecturas y configuración del
+usuario.
 
-## 1. Estado en una línea
+```
+┌──────────────── JS (UI + lecturas + configuración) ────────────────┐
+│ app/  components/  providers/  hooks/                               │
+│ services/  FeedService            lista de feeds (AsyncStorage)     │
+│            FeedDiscoveryService   buscar feeds al agregar uno       │
+│            FeedContentService     lee la generación activa          │
+│            ArticleService         lee artículos; si falta → nativo  │
+│            FeedRefreshService     dispara refresh / aplica / 1h     │
+│ db/        schema + migraciones + repositorios de SOLO LECTURA      │
+└───────────────────────────────┬─────────────────────────────────────┘
+      API nativa (la única puerta de escritura)
+      refreshFeeds · applyPendingRefresh · downloadArticle(url)
+      reconcileArticleDownloads · collectGarbage · clearCaches
+      isWorkerBusy  +  eventos de progreso
+┌───────────────────────────────┴─────────────────────────────────────┐
+│ Kotlin  modules/FeedRefreshModule/android/src/main/java/            │
+│   FeedRefreshModule.kt   solo define funciones y eventos            │
+│   worker/   un hilo que ejecuta todo en orden                       │
+│   feeds/    bajar + parsear feeds → nueva generación                │
+│   articles/ bajar artículos, limpieza (GC)                          │
+│   db/       todo el SQL                                             │
+└─────────────────────────────────────────────────────────────────────┘
+   SQLite noticioso.db (generaciones, snapshots, jobs, metadata)
+   + HTML de artículos en <cache>/article-html/
+```
 
-El pipeline de refresh **ya es nativo en su mayor parte** (feed fetch/parseo +
-descarga de artículos en Kotlin) y **Stage 3 está implementado y verificado en
-automático**, pero **falta la validación manual del usuario en un dispositivo
-real**. **Stage 4 (GC de huérfanos) está bloqueado** hasta esa aprobación.
+Regla práctica: **si algo ya lo hace el nativo, no se reimplementa en JS** (bajar
+feeds, bajar artículos, extraer metadata, escribir tablas). Se agrega o se
+extiende una función nativa.
 
-**No arranques Stage 4 sin la aprobación explícita del usuario.**
+## 2. Dónde vive cada dato
 
----
-
-## 2. Qué está hecho (Stages 0–3)
-
-| Stage | Qué resuelve | Estado |
+| Dónde | Qué | Quién escribe |
 | --- | --- | --- |
-| 0 | PoC de módulo nativo Android (guard anti-duplicado) | ✅ |
-| 1 | Baseline SQLite (`infrastructure/`), cleanup one-time de caches legacy | ✅ (se descartó la migración desde AsyncStorage) |
-| 2 | Fetch + parseo de feeds en **Kotlin**, apply transaccional al tocar el toast | ✅ |
-| 3 | **Descargador nativo de artículos** (temp + rename atómico + metadata + jobs + reconciliación) | ✅ código listo, ⏳ falta prueba manual del usuario |
-| 4 | GC de huérfanos consciente de referencias | 🚫 **bloqueado** |
+| AsyncStorage `@noticioso-feedList` | La lista de feeds del usuario | JS |
+| SQLite `noticioso.db` | Generaciones, snapshots de feeds, estado por feed, punteros activo/pendiente, último fetch, metadata de artículos, jobs de descarga | Nativo |
+| Archivos `<cache>/article-html/` | HTML de cada artículo | Nativo |
 
-### Reglas de negocio que YA están implementadas (no re-litigar)
+El schema y las migraciones son de JS (`db/schema.ts`, `db/migrate.ts`) y corren
+al iniciar, antes de usar el nativo. Tablas y relaciones: `db/README.md`.
 
-- `@noticioso-feedList` (la lista de feeds del usuario) **permanece en AsyncStorage**. Nunca pasa a SQLite.
-- **SQLite es la fuente canónica** para: generaciones de refresh, snapshots de feed, items por feed,
-  metadata de artículos y estado de descarga. **El HTML de artículos vive en filesystem** (`Paths.cache/article-html/<slug>.html`).
-- La **generación activa sigue visible** hasta que el usuario toca el toast; el toast es el **único**
-  disparador del apply (transacción SQLite que conmuta `active_refresh`).
-- **Un solo worker nativo** a la vez (guard en Kotlin). Cola interna serializa varios `refreshId`.
-- **Freshness de feeds: 1 hora** (`last_fetch_completion`).
-- **Precarga top-5 desactivada**; la lectura on-demand en JS sigue activa.
-- **Sin retries automáticos** (ni feeds ni artículos). Fallidos quedan flageados.
-- Una **feed fallida** arrastra (carry-forward) el snapshot de la generación activa anterior.
-- **Race cross-runtime on-demand JS ↔ nativo**: aceptada explícitamente (riesgo bajo). No hay lock por URL.
-- **Límite de 300 artículos y LRU: eliminados** en Stage 3 (el GC es trabajo de Stage 4).
+## 3. Conceptos
 
----
+- **Generación**: una pasada completa por todos los feeds (fila en `refreshes`).
+  Estados: `building` → `ready` → `applied` → `superseded`.
+- **Activa**: la generación que el usuario ve. **Pendiente**: una generación
+  lista (`ready`) que espera que el usuario toque el toast.
+- El usuario **sigue viendo la activa** hasta tocar el toast "Load new available
+  articles"; nunca ve una generación a medio armar.
 
-## 3. Mapa del código
+## 4. Flujos
 
-### 3.1 Capa de datos — `infrastructure/`
+### Refresh
+1. Se dispara al abrir la app y al volver a primer plano **si el último fetch
+   tiene más de 1 hora**, o a mano con el botón ⟳. Una pendiente sin aplicar
+   **no** lo bloquea: las noticias viejas no sirven.
+2. Nativo crea una generación, baja y parsea cada feed y guarda su snapshot.
+   Un feed que falla queda marcado como fallido y **arrastra** su último
+   snapshot bueno. No hay reintentos automáticos.
+3. La generación pasa a `ready` y queda como pendiente (si había otra pendiente
+   sin aplicar, pasa a `superseded`). JS muestra el toast.
+4. A continuación nativo baja los artículos de esa generación, uno por uno.
+
+Si el worker está ocupado cuando se pide un refresh, el pedido **se encola**
+(nunca se descarta) y corre al terminar lo que estaba en curso.
+
+### Aplicar (toque del toast)
+`applyPendingRefresh` hace un intercambio atómico de punteros (pendiente →
+activa, la activa anterior → `superseded`). Corre de inmediato, sin esperar una
+descarga en curso. Después encola la limpieza.
+
+### Descarga de artículos
+- **Masiva**: tras cada pasada de feeds. Un job por URL en
+  `article_download_jobs`; una URL que aparece en varios feeds se baja una vez.
+  Descarga a archivo temporal + rename atómico, y metadata (imagen, autor,
+  título, resumen) a SQLite.
+- **Si la app muere a mitad de descarga**: al abrir o volver a primer plano,
+  `reconcileArticleDownloads` retoma los jobs sin terminar.
+- **A demanda** (`downloadArticle`): cuando el usuario abre un artículo que no
+  está en caché (incluida la ruta `shared/`). Usa el mismo código de descarga,
+  pero fuera del worker serial para que el lector no espere detrás de una
+  descarga masiva.
+- Un artículo cuenta como cacheado cuando tiene **metadata y archivo**. El
+  círculo ● junto a un feed indica que todos sus artículos lo están; se calcula
+  al momento, no se guarda.
+
+### Limpieza (GC)
+Corre después de cada aplicar y una vez al abrir la app (por si una limpieza
+anterior quedó interrumpida; se puede repetir sin efectos). Conserva solo la
+generación activa y la pendiente, y los artículos que ellas referencian; borra
+el resto: generaciones viejas con sus filas hijas, metadata y archivos HTML
+huérfanos, y temporales de descargas interrumpidas.
+- Primero las filas (una transacción) y después los archivos.
+- Si no puede leer el snapshot de algún feed, no borra artículos.
+- Un artículo abierto a demanda que no está en ningún feed se conserva durante
+  la sesión en curso y se borra en una sesión posterior.
+
+### Borrar cachés (Settings)
+`clearCaches` borra las tablas de inmediato (una descarga en curso lo detecta y
+se detiene en el siguiente artículo) y, ya en el worker, borra los archivos. La
+lista de feeds no se toca.
+
+## 5. El worker nativo
+
+`worker/SerialWorker.kt`: **un solo hilo** ejecuta refresh de feeds, descargas
+masivas, reconciliación y limpieza, de a una tarea por vez, en orden de llegada.
+- Pedidos repetidos del mismo tipo no se acumulan en la cola.
+- Cuando la cola se vacía emite `onArticleWorkerIdle`. Es el evento final
+  garantizado: la UI lo usa para apagar indicadores de progreso aunque se haya
+  perdido algún evento intermedio.
+- Los eventos son avisos; la fuente de verdad son SQLite y los archivos. La UI
+  recalcula al enfocar la pantalla.
+
+Quedan fuera del worker, a propósito: `applyPendingRefresh` (inmediato),
+`downloadArticle` (a demanda) y el primer paso de `clearCaches`. La descarga a
+demanda y la limpieza se coordinan en `articles/OnDemandDownloads.kt`.
+
+## 6. Contratos entre JS y Kotlin
+
+Los dos lados comparten una base y una carpeta de archivos. Lo que deben
+calcular igual está fijado en `modules/FeedRefreshModule/contract/` y lo leen un
+test de Jest **y** un test de Kotlin, así que cambiar un solo lado rompe un test
+en vez de romper la app en silencio:
+
+| Archivo | Qué fija |
+| --- | --- |
+| `database.json` | Carpeta y nombre de la base (`SQLite/noticioso.db`) |
+| `article-file-names.json` | Carpeta de artículos y nombre de archivo para cada URL |
+| `feed-snapshot.json` | El JSON que nativo guarda en `feed_snapshots.data` y JS lee |
+
+## 7. Mapa de carpetas
 
 ```
-infrastructure/
-├── database.ts            # conexión SQLite (expo-sqlite); carga diferida + inyección para tests
-├── schema.ts              # schema v3 (SQL DDL)
-├── migrate.ts             # migraciones v1→v2→v3, idempotentes
-├── initializer.ts         # cleanup legacy → migrate() → listo
-├── ActiveRefreshRepository.ts     # puntero a la generación activa (id=1)
-├── PendingRefreshRepository.ts    # puntero a la generación READY pendiente (id=1)
-├── RefreshRepository.ts           # filas `refreshes` (building|ready|applied|superseded)
-├── FeedSnapshotRepository.ts      # `feed_snapshots` (payload por feed)
-├── LastFetchCompletionRepository.ts  # throttle de 1h
-├── ArticleCacheRepository.ts      # `article_metadata` (global por URL) + getMetadataPresentUrls()
-├── ArticleDownloadEventSubscriber.ts  # suscripción a eventos nativos desde JS
-├── legacy/LegacyCacheCleanup.ts   # cleanup destructivo one-time (preserva feedList)
-├── testing/RealSqliteTestDatabase.ts  # adaptador de node:sqlite para Jest
-└── migrate.test.ts        # tests de schema/migraciones contra SQLite real
-```
-
-**Schema (v3):** `refreshes`, `refresh_feeds` (con `position`), `feed_snapshots`,
-`active_refresh`, `pending_refresh`, `last_fetch_completion`, `article_metadata`,
-`article_download_jobs` (PK compuesta `(refresh_id, url)`).
-Diagrama y relaciones: `infrastructure/README.md`.
-
-### 3.2 Módulo nativo — `modules/FeedRefreshModule/`
-
-```
+app/          rutas (expo-router)                __tests__/   tests de pantallas
+components/   providers/   theme/   types/
+hooks/        useRefreshLifecycle (ciclo de refresh, progreso, toast)
+              useFeedCacheStatus (conteos e indicador ●), useFeedContent, ...
+services/     lógica JS (una clase + singleton por archivo, dependencias por constructor)
+db/           SQLite desde JS: schema, migraciones, repositorios de solo lectura
+lib/          helpers puros; lib/webview/ = scripts que corren DENTRO del WebView
 modules/FeedRefreshModule/
-├── src/FeedRefreshModule.ts        # requireNativeModule + toNativeFeedInput()
-├── src/FeedRefreshModule.types.ts  # tipos de eventos
-├── src/FeedRefreshModule.web.ts    # stub web
-└── android/src/main/java/com/ggsalas/noticiosoandroid/feedrefresh/
-    ├── FeedRefreshModule.kt        # definición del módulo, worker slot, cola, eventos
-    ├── ArticleDownloadWorker.kt    # cola de artículos, dedup por URL, jobs, reconciliación, eventos por feed
-    ├── ArticleDownloader.kt        # descarga a temp + rename atómico + metadata
-    └── ArticleMetadataExtractor.kt # extracción de metadata (paridad con JS)
+  src/                       bindings JS, tipos, events.ts, stub web
+  contract/                  contratos compartidos
+  android/src/main/java/     Kotlin (worker/ db/ feeds/ articles/)
+  android/src/test/java/     tests unitarios Kotlin
+scripts/android-test/        scripts para manejar la app en un emulador
+docs/                        este documento; history/ = planes y reportes viejos
 ```
 
-**API nativa expuesta a JS:** `refreshFeeds(feeds)`, `reconcileArticleDownloads()`,
-`clearArticleDownloadJobs()`.
-
-**Eventos nativos:**
-- `onArticleDownloadFeedStarted` → `{ refreshId, feedCount, articleCount }` (antes de procesar una feed).
-- `onArticleDownloadFeedComplete` → `{ refreshId, feedUrl, feedIndex, feedCount, articleCount, articleSuccessCount, articleFailedCount }`.
-
-Los eventos son **best-effort**: SQLite + filesystem son la fuente de verdad.
-
-### 3.3 Servicios JS — `services/`
-
-- `FeedService.ts` — lista de feeds en AsyncStorage; **el fetch de feeds ya no vive aquí** (lo hace Kotlin).
-- `FeedRefreshService.ts` — orquesta refresh nativo + apply del toast.
-- `FeedCacheService.ts` — lee snapshots de la generación **activa**.
-- `ArticleCacheService.ts` — metadata + HTML; `getFullyCachedUrls()` (fila + archivo) para el indicador de completitud.
-- `ArticleService.ts` — lectura **on-demand** de artículos.
-- `StorageService.ts` — `clearCaches()` borra tablas SQL + archivos HTML; **nunca** toca `@noticioso-feedList`.
-
-### 3.4 UI
-
-- `providers/FeedsProvider.tsx` — estado compartido: `feeds`, `updating`,
-  `articleDownloadProgress` (transitorio, `fetching|complete`), `feedArticleCounts`,
-  `feedArticleCacheComplete`, `lastFullRefreshAt`, `shouldShowUpdateToast`,
-  `refreshActiveFeedCacheState()`.
-- `app/feeds/index.tsx` — pantalla de feeds:
-  - El **control refresh del header** muestra `Updating feeds` o `Fetching articles X/Y` (spinner + texto);
-    el subtítulo conserva `Last full update at ...`.
-  - El loader del cuerpo **solo** aparece en la carga inicial sin feeds; la lista activa nunca se desmonta.
-  - Círculo lleno (●) junto al nombre de la feed cuando **todos** los artículos del snapshot activo
-    tienen fila de metadata **y** archivo HTML final. Se recalcula al enfocar la ruta (`useFocusEffect`)
-    y tras cada evento por feed. **No se persiste ningún booleano.**
-- `hooks/useFeedContent.ts` — refresca el contenido visible al recibir un evento por feed.
-- `app/_layout.tsx` — reconciliación inicial al montar (tras `dbReady`) y al volver a foreground.
-
----
-
-## 4. Cómo verificar un cambio
-
-Requisitos: **Node 22.5+** (para `node:sqlite` en tests), **JDK/Android SDK** para el build nativo.
+## 8. Cómo verificar un cambio
 
 ```bash
-npx jest --runInBand          # 127 tests / 13 suites (warning experimental de node:sqlite es esperado)
+npx jest --runInBand        # tests JS (Node 22.5+; el warning de node:sqlite es esperado)
 npx tsc --noEmit
 npm run lint
-git diff --check
-
-# build Android
-source "$HOME/.config/zsh/env.zsh"
-./android/gradlew -p android app:assembleDebug -x lint -x test \
-  --configure-on-demand --build-cache -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
-
-# exportar bundle (verifica que el JS compila)
-npx expo export --platform android --output-dir "$TMPDIR/noticioso-export"
+./android/gradlew -p android :feed-refresh-module:testDebugUnitTest   # tests Kotlin (JVM)
 ```
 
-**Instalar en un dispositivo:**
-```bash
-npm run android                       # debug en dispositivo
-# o APK instalable:
-npx eas-cli@latest build --platform android --profile preview   # profile `preview` => buildType apk
-```
+En un emulador (detalle en `AGENTS.md`, sección "Emulator Testing"):
+`scripts/android-test/at.sh` permite abrir, mandar a background o matar la app,
+ver el estado de la base (`state`), simular que pasó tiempo (`stale 2`) y tomar
+capturas. Los cambios de Kotlin requieren reinstalar
+(`./android/gradlew -p android app:installDebug`); los de JS recargan con Metro.
 
-**Reglas del repo (`AGENTS.md`):**
-- **Nunca** hacer `git add`, `commit`, `push`, `rebase`, `reset`. Solo comandos de lectura. El usuario comitea.
-- Los servicios son clases con **singleton exportado** y **dependencias inyectadas por constructor sin defaults**.
-- Tests: se instancia la clase directamente con dependencias mockeadas, **no** `jest.mock()` del módulo.
+Lo que **no** tiene tests automáticos y se verifica en el emulador: el código
+Kotlin que usa SQLite (stores, worker de descarga, limpieza, aplicar, borrar
+cachés).
 
----
+## 9. Trampas conocidas
 
-## 5. Qué falta ahora mismo (prioridad)
-
-### 5.1 Bloqueante: aprobación manual de Stage 3 (usuario)
-
-El usuario debe correr la app en un Android real y validar:
-
-1. Refresh manual → aparece `Updating feeds` en el header → luego `Fetching articles X/Y`.
-2. Los artículos se descargan y **abren al instante** desde caché (con metadata: hero image, título, excerpt).
-3. Al volver a `/feeds`, las feeds ya completas muestran el **círculo lleno**.
-4. **Matar la app** a mitad de la descarga y reabrir → la reconciliación retoma lo pendiente.
-5. Artículos **on-demand** (no predescargados) y rutas **shared** (`app/shared/[article_url].tsx`) siguen funcionando.
-6. Con **más de 300 artículos** todo persiste (ya no hay tope ni LRU).
-7. Feed con **URL inválida** → queda flageada como fallida y arrastra el snapshot anterior.
-
-Checklist detallado y esperado por caso: `docs/feed-refresh-worker-plan.md` §11.4.
-
-### 5.2 Stage 4 — GC consciente de referencias (solo tras aprobación)
-
-- Borrar filas de generaciones **anteriores a la activa** (y `feed_snapshots` / `refresh_feeds` huérfanos).
-- Borrar **metadata + HTML** solo si la URL no está referenciada por snapshots activos/pendientes ni por jobs activos.
-- Ejecutar el GC **después del apply** del toast, dentro de la misma transacción o de forma recuperable.
-- La app debe sobrevivir a una muerte de proceso en mitad del GC (re-ejecutarlo al próximo foreground).
-- Recordar: los artículos cacheados **sin referencia** (p. ej. de la ruta `shared/`) **no se retienen**;
-  se vuelven a descargar on-demand.
-- Atención al comportamiento de **foreign keys** en SQLite (CASCADE) — ver `TODO.md`.
-
-### 5.3 Deuda técnica known (ver `TODO.md` para el detalle completo)
-
-- `FeedRefreshModule.kt` (~670 líneas) mezcla definición de módulo, HTTP, parseo XML y escrituras SQLite → conviene partirlo
-  (`FeedFetcher.kt`, `FeedParser.kt`, `FeedSnapshotWriter.kt`).
-- `FeedPullParserHandler` no tiene **tests unitarios** (requiere fixtures RSS/Atom/RDF/CDATA/malformed).
-- `FeedCacheService.delete()` es un **no-op** (deja filas de snapshot huérfanas).
-- `FeedService.fetchFeedBasic/fetchAllFeeds/fetchAndCacheAllFeedsRanked` están **muertos** (Kotlin hace el fetch).
-- `FeedCacheService.setLastFullRefresh()` es un no-op deprecado.
-- Falta un test que **fije la ruta del archivo SQLite** (`filesDir/SQLite/noticioso.db`): renombrarla rompe el worker nativo en silencio.
-- Los tests de instrumentación Kotlin (downloader/parser) **no existen**; hoy se cubre con pruebas manuales.
-
----
-
-## 6. Trampas conocidas para quien siga
-
-1. **El path de la DB es compartido JS↔Kotlin.** Si `DATABASE_NAME` cambia, el nativo abre otra base y falla **en silencio**.
-2. **`article_metadata` es global por URL**, sin FK a refreshes; `article_download_jobs` sí es por refresh y se borra explícitamente en `clearCaches()`.
-3. **Los jobs fallidos NO se reintentan** (semántica de "sin retries"). Si se cambia esto, hay que actualizar la reconciliación.
-4. **El nombre del archivo HTML** es `encodeURIComponent(url.replace(/[^a-zA-Z0-9]/g, "_"))` en **ambos** runtimes; cambiarlo en uno solo rompe la cache compartida.
-5. **La cola de artículos se serializa** por `refreshId` a nivel de módulo; no paralelizar sin volver a revisar el check-then-download.
-6. **Eventos best-effort**: si JS no está montado, los eventos se pierden. La UI recalcula al enfocar la ruta — no confíes en los eventos como estado.
-7. **`node:sqlite` es experimental**: el warning en los tests es normal; requiere Node ≥ 22.5.
-8. **No reintroducir el mock manual de SQL en `jest.setup.js`**: los tests de DB usan SQLite real.
-
----
-
-## 7. Comandos Git seguros (solo lectura)
-
-```bash
-git status
-git log --oneline -10
-git show --stat HEAD
-git diff
-```
+1. **Cambiar un contrato de un solo lado** (nombre de la base, nombre de archivo
+   de artículo, formato del snapshot): hay que cambiar ambos lados y el archivo
+   en `contract/`.
+2. **`article_metadata` es global por URL**, sin relación con generaciones; por
+   eso la limpieza decide por referencias desde los snapshots, no por
+   generación.
+3. **Los jobs fallidos no se reintentan.** Si se cambia, hay que revisar la
+   reconciliación.
+4. **No confiar en los eventos como estado**: si JS no estaba escuchando, se
+   pierden.
+5. **El nativo no usa `ON DELETE CASCADE`**: borra las filas hijas de forma
+   explícita.
+6. **Sitios que rechazan la descarga** (por ejemplo Ars Technica, HTTP 405): sus
+   artículos quedan fallidos. No se intenta saltear esa protección (ver
+   `TODO.md`).

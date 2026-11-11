@@ -8,6 +8,6 @@ instead of silently breaking the app.
 
 | File | What it pins | JS side | Kotlin side |
 | --- | --- | --- | --- |
-| `database.json` | Database folder + file name | `infrastructure/database.ts` (`DATABASE_NAME`; expo-sqlite uses `SQLite/`) | `db/NoticiosoDatabase.kt` |
-| `article-file-names.json` | Article cache folder and URL → file name | `services/ArticleCacheService.ts` (`articleFileName`) | `articles/ArticleFiles.kt` |
+| `database.json` | Database folder + file name | `db/database.ts` (`DATABASE_NAME`; expo-sqlite uses `SQLite/`) | `db/NoticiosoDatabase.kt` |
+| `article-file-names.json` | Article cache folder and URL → file name | `services/ArticleService.ts` (`articleFileName`) | `articles/ArticleFiles.kt` |
 | `feed-snapshot.json` | JSON stored in `feed_snapshots.data` | read as `FeedData` (`FeedContentService`) | written by `feeds/FeedJson.kt` |

@@ -4,7 +4,7 @@ import java.util.regex.Pattern
 
 /**
  * Extracts article metadata from HTML content using regex patterns.
- * Matches the semantics of JS ArticleCacheService extraction.
+ * The only implementation of article metadata extraction (JS reads the result from SQLite).
  */
 object ArticleMetadataExtractor {
     data class ArticleMetadata(

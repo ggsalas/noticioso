@@ -6,7 +6,7 @@ import java.io.File
 /**
  * Where article HTML lives on disk: `<cacheDir>/article-html/<name>.html`.
  *
- * CONTRACT with JS (`ArticleCacheService.getFilePath`): both runtimes read and
+ * CONTRACT with JS (`services/ArticleService.ts articleFileName`): both runtimes read and
  * write the same files, so the file name must be computed identically:
  *   JS: encodeURIComponent(url.replace(/[^a-zA-Z0-9]/g, "_")) + ".html"
  * Changing it on one side only silently breaks the shared cache.
