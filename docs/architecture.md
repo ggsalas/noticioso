@@ -1,200 +1,199 @@
-# Arquitectura — Noticioso (Android)
+# Architecture — Noticioso (Android)
 
-Descripción vigente de cómo está construida la app. Los planes y reportes
-originales de cada etapa están en `docs/history/`; los pendientes, en `TODO.md`.
+Current description of how the app is built. The original plans and reports of
+each stage are in `docs/history/`; open items are in `TODO.md`.
 
-## 1. La idea en una línea
+## 1. The idea in one line
 
-**Una sola app con una frontera:** el módulo nativo (Kotlin) es el pipeline de
-datos y el **único que escribe**; JS es interfaz, lecturas y configuración del
-usuario.
+**One app with one boundary:** the native module (Kotlin) is the data pipeline
+and the **only writer**; JS is UI, reads and user configuration.
+
+**Why a native module:** downloading and parsing every feed and hundreds of
+articles is heavy work. In JS it would compete with the UI for the same thread
+and scrolling or page turns would stutter or freeze. The native module runs it
+on its own background thread, so the UI stays responsive while new content is
+prepared.
 
 ```
-┌──────────────── JS (UI + lecturas + configuración) ────────────────┐
+┌──────────────── JS (UI + reads + configuration) ───────────────────┐
 │ app/  components/  providers/  hooks/                               │
-│ services/  FeedService            lista de feeds (AsyncStorage)     │
-│            FeedDiscoveryService   buscar feeds al agregar uno       │
-│            FeedContentService     lee la generación activa          │
-│            ArticleService         lee artículos; si falta → nativo  │
-│            FeedRefreshService     dispara refresh / aplica / 1h     │
-│ db/        schema + migraciones + repositorios de SOLO LECTURA      │
+│ services/  FeedService            the feed list (AsyncStorage)      │
+│            FeedDiscoveryService   find feeds when adding one        │
+│            FeedContentService     reads the active generation       │
+│            ArticleService         reads articles; if missing → native│
+│            FeedRefreshService     triggers refresh / applies / 1h   │
+│ db/        schema + migrations + READ-ONLY repositories             │
 └───────────────────────────────┬─────────────────────────────────────┘
-      API nativa (la única puerta de escritura)
+      Native API (the only way to write)
       refreshFeeds · applyPendingRefresh · downloadArticle(url)
       reconcileArticleDownloads · collectGarbage · clearCaches
-      isWorkerBusy  +  eventos de progreso
+      isWorkerBusy  +  progress events
 ┌───────────────────────────────┴─────────────────────────────────────┐
 │ Kotlin  modules/FeedRefreshModule/android/src/main/java/            │
-│   FeedRefreshModule.kt   solo define funciones y eventos            │
-│   worker/   un hilo que ejecuta todo en orden                       │
-│   feeds/    bajar + parsear feeds → nueva generación                │
-│   articles/ bajar artículos, limpieza (GC)                          │
-│   db/       todo el SQL                                             │
+│   FeedRefreshModule.kt   only defines functions and events          │
+│   worker/   one thread that runs everything in order                │
+│   feeds/    fetch + parse feeds → new generation                    │
+│   articles/ download articles, cleanup (GC)                         │
+│   db/       all the SQL                                             │
 └─────────────────────────────────────────────────────────────────────┘
-   SQLite noticioso.db (generaciones, snapshots, jobs, metadata)
-   + HTML de artículos en <cache>/article-html/
+   SQLite noticioso.db (generations, snapshots, jobs, metadata)
+   + article HTML in <cache>/article-html/
 ```
 
-Regla práctica: **si algo ya lo hace el nativo, no se reimplementa en JS** (bajar
-feeds, bajar artículos, extraer metadata, escribir tablas). Se agrega o se
-extiende una función nativa.
+Rule of thumb: **if native already does it, JS does not reimplement it**
+(fetching feeds, downloading articles, extracting metadata, writing tables).
+Add or extend a native function instead.
 
-## 2. Dónde vive cada dato
+## 2. Where each piece of data lives
 
-| Dónde | Qué | Quién escribe |
+| Where | What | Who writes |
 | --- | --- | --- |
-| AsyncStorage `@noticioso-feedList` | La lista de feeds del usuario | JS |
-| SQLite `noticioso.db` | Generaciones, snapshots de feeds, estado por feed, punteros activo/pendiente, último fetch, metadata de artículos, jobs de descarga | Nativo |
-| Archivos `<cache>/article-html/` | HTML de cada artículo | Nativo |
+| AsyncStorage `@noticioso-feedList` | The user's feed list | JS |
+| SQLite `noticioso.db` | Generations, feed snapshots, per-feed status, active/pending pointers, last fetch, article metadata, download jobs | Native |
+| Files `<cache>/article-html/` | HTML of each article | Native |
 
-El schema y las migraciones son de JS (`db/schema.ts`, `db/migrate.ts`) y corren
-al iniciar, antes de usar el nativo. Tablas y relaciones: `db/README.md`.
+The schema and migrations belong to JS (`db/schema.ts`, `db/migrate.ts`) and run
+at startup, before native is used. Tables and relations: `db/README.md`.
 
-## 3. Conceptos
+## 3. Concepts
 
-- **Generación**: una pasada completa por todos los feeds (fila en `refreshes`).
-  Estados: `building` → `ready` → `applied` → `superseded`.
-- **Activa**: la generación que el usuario ve. **Pendiente**: una generación
-  lista (`ready`) que espera que el usuario toque el toast.
-- El usuario **sigue viendo la activa** hasta tocar el toast "Load new available
-  articles"; nunca ve una generación a medio armar.
+- **Generation**: one complete pass over all feeds (a row in `refreshes`).
+  States: `building` → `ready` → `applied` → `superseded`.
+- **Active**: the generation the user sees. **Pending**: a `ready` generation
+  waiting for the user to tap the toast.
+- The user **keeps seeing the active one** until they tap the "Load new available
+  articles" toast; they never see a half-built generation.
 
-## 4. Flujos
+## 4. Flows
 
 ### Refresh
-1. Se dispara al abrir la app y al volver a primer plano **si el último fetch
-   tiene más de 1 hora**, o a mano con el botón ⟳. Una pendiente sin aplicar
-   **no** lo bloquea: las noticias viejas no sirven.
-2. Nativo crea una generación, baja y parsea cada feed y guarda su snapshot.
-   Un feed que falla queda marcado como fallido y **arrastra** su último
-   snapshot bueno. No hay reintentos automáticos.
-3. La generación pasa a `ready` y queda como pendiente (si había otra pendiente
-   sin aplicar, pasa a `superseded`). JS muestra el toast.
-4. A continuación nativo baja los artículos de esa generación, uno por uno.
+1. Triggered on app open and on return to the foreground **if the last fetch is
+   more than 1 hour old**, or manually with the ⟳ button. An unapplied pending
+   generation does **not** block it: old news is useless.
+2. Native creates a generation, fetches and parses each feed and stores its
+   snapshot. A feed that fails is marked as failed and **carries forward** its
+   last good snapshot. There are no automatic retries.
+3. The generation becomes `ready` and pending (an older unapplied pending one
+   becomes `superseded`). JS shows the toast.
+4. Native then downloads the articles of that generation, one by one.
 
-Si el worker está ocupado cuando se pide un refresh, el pedido **se encola**
-(nunca se descarta) y corre al terminar lo que estaba en curso.
+If the worker is busy when a refresh is requested, the request is **queued**
+(never dropped) and runs when the current work finishes.
 
-### Aplicar (toque del toast)
-`applyPendingRefresh` hace un intercambio atómico de punteros (pendiente →
-activa, la activa anterior → `superseded`). Corre de inmediato, sin esperar una
-descarga en curso. Después encola la limpieza.
+### Apply (toast tap)
+`applyPendingRefresh` swaps the pointers atomically (pending → active, the
+previous active → `superseded`). It runs immediately, without waiting for a
+download in progress. Then it queues the cleanup.
 
-### Descarga de artículos
-- **Masiva**: tras cada pasada de feeds. Un job por URL en
-  `article_download_jobs`; una URL que aparece en varios feeds se baja una vez.
-  Descarga a archivo temporal + rename atómico, y metadata (imagen, autor,
-  título, resumen) a SQLite.
-- **Si la app muere a mitad de descarga**: al abrir o volver a primer plano,
-  `reconcileArticleDownloads` retoma los jobs sin terminar.
-- **A demanda** (`downloadArticle`): cuando el usuario abre un artículo que no
-  está en caché (incluida la ruta `shared/`). Usa el mismo código de descarga,
-  pero fuera del worker serial para que el lector no espere detrás de una
-  descarga masiva.
-- Un artículo cuenta como cacheado cuando tiene **metadata y archivo**.
-- El indicador junto a un feed aparece cuando **ya se intentó bajar cada
-  artículo** de ese feed en la generación activa (cada job terminó en
-  `completed` o `failed`): **●** si se bajó al menos uno, **○** si fallaron
-  todos (por ejemplo un sitio que rechaza la descarga). Al aplicar una
-  generación nueva ningún feed lo tiene hasta que sus descargas se intentan. Se
-  calcula al momento desde `article_download_jobs`, no se guarda.
+### Article download
+- **Bulk**: after each feed pass. One job per URL in `article_download_jobs`; a
+  URL that appears in several feeds is downloaded once. Download to a temp file
+  + atomic rename, and metadata (image, author, title, excerpt) to SQLite.
+  Progress is reported feed by feed ("Downloading articles for feed 2/3").
+- **If the app dies mid-download**: on open or return to the foreground,
+  `reconcileArticleDownloads` resumes unfinished jobs.
+- **On demand** (`downloadArticle`): when the user opens an article that is not
+  cached (including the `shared/` route). Same download code, but outside the
+  serial worker so the reader does not wait behind a bulk download.
+- An article counts as cached when it has **metadata and a file**.
+- The indicator next to a feed appears once **every article** of that feed in
+  the active generation **was attempted** (each job ended `completed` or
+  `failed`): **●** if at least one was downloaded, **○** if all failed (e.g. a
+  site that rejects downloads). After applying a new generation no feed has it
+  until its downloads are attempted. It is derived on demand from
+  `article_download_jobs`, not stored.
 
-### Limpieza (GC)
-Corre después de cada aplicar y una vez al abrir la app (por si una limpieza
-anterior quedó interrumpida; se puede repetir sin efectos). Conserva solo la
-generación activa y la pendiente, y los artículos que ellas referencian; borra
-el resto: generaciones viejas con sus filas hijas, metadata y archivos HTML
-huérfanos, y temporales de descargas interrumpidas.
-- Primero las filas (una transacción) y después los archivos.
-- Si no puede leer el snapshot de algún feed, no borra artículos.
-- Un artículo abierto a demanda que no está en ningún feed se conserva durante
-  la sesión en curso y se borra en una sesión posterior.
+### Cleanup (GC)
+Runs after every apply and once on app open (in case a previous cleanup was
+interrupted; safe to repeat). Keeps only the active and pending generations and
+the articles they reference; deletes the rest: old generations with their child
+rows, orphan metadata and HTML files, and temp files of interrupted downloads.
+- Rows first (one transaction), then files.
+- If some feed snapshot cannot be read, no articles are deleted.
+- An article opened on demand that is in no feed is kept during the current
+  session and deleted in a later one.
 
-### Borrar cachés (Settings)
-`clearCaches` borra las tablas de inmediato (una descarga en curso lo detecta y
-se detiene en el siguiente artículo) y, ya en el worker, borra los archivos. La
-lista de feeds no se toca.
+### Clear caches (Settings)
+`clearCaches` clears the tables immediately (a running download notices and stops
+at its next article) and then, on the worker, deletes the files. The feed list is
+not touched.
 
-## 5. El worker nativo
+## 5. The native worker
 
-`worker/SerialWorker.kt`: **un solo hilo** ejecuta refresh de feeds, descargas
-masivas, reconciliación y limpieza, de a una tarea por vez, en orden de llegada.
-- Pedidos repetidos del mismo tipo no se acumulan en la cola.
-- Cuando la cola se vacía emite `onArticleWorkerIdle`. Es el evento final
-  garantizado: la UI lo usa para apagar indicadores de progreso aunque se haya
-  perdido algún evento intermedio.
-- Los eventos son avisos; la fuente de verdad son SQLite y los archivos. La UI
-  recalcula al enfocar la pantalla.
+`worker/SerialWorker.kt`: **a single thread** runs feed refresh, bulk downloads,
+reconciliation and cleanup, one task at a time, in arrival order.
+- Repeated requests of the same kind do not pile up in the queue.
+- When the queue drains it emits `onArticleWorkerIdle`. It is the guaranteed
+  final event: the UI uses it to turn off progress indicators even if an
+  intermediate event was lost.
+- Events are notifications; the source of truth is SQLite and the files. The UI
+  recomputes when the screen gets focus.
 
-Quedan fuera del worker, a propósito: `applyPendingRefresh` (inmediato),
-`downloadArticle` (a demanda) y el primer paso de `clearCaches`. La descarga a
-demanda y la limpieza se coordinan en `articles/OnDemandDownloads.kt`.
+Deliberately outside the worker: `applyPendingRefresh` (immediate),
+`downloadArticle` (on demand) and the first step of `clearCaches`. On-demand
+downloads and cleanup are coordinated in `articles/OnDemandDownloads.kt`.
 
-## 6. Contratos entre JS y Kotlin
+## 6. Contracts between JS and Kotlin
 
-Los dos lados comparten una base y una carpeta de archivos. Lo que deben
-calcular igual está fijado en `modules/FeedRefreshModule/contract/` y lo leen un
-test de Jest **y** un test de Kotlin, así que cambiar un solo lado rompe un test
-en vez de romper la app en silencio:
+Both sides share a database and a folder of files. What they must compute the
+same way is pinned in `modules/FeedRefreshModule/contract/` and read by a Jest
+test **and** a Kotlin test, so changing only one side breaks a test instead of
+silently breaking the app:
 
-| Archivo | Qué fija |
+| File | What it pins |
 | --- | --- |
-| `database.json` | Carpeta y nombre de la base (`SQLite/noticioso.db`) |
-| `article-file-names.json` | Carpeta de artículos y nombre de archivo para cada URL |
-| `feed-snapshot.json` | El JSON que nativo guarda en `feed_snapshots.data` y JS lee |
+| `database.json` | Folder and name of the database (`SQLite/noticioso.db`) |
+| `article-file-names.json` | Article folder and file name for each URL |
+| `feed-snapshot.json` | The JSON native stores in `feed_snapshots.data` and JS reads |
 
-## 7. Mapa de carpetas
+## 7. Folder map
 
 ```
-app/          rutas (expo-router)                __tests__/   tests de pantallas
+app/          routes (expo-router)                __tests__/   screen tests
 components/   providers/   theme/   types/
-hooks/        useRefreshLifecycle (ciclo de refresh, progreso, toast)
-              useFeedCacheStatus (conteos e indicador ●), useFeedContent, ...
-services/     lógica JS (una clase + singleton por archivo, dependencias por constructor)
-db/           SQLite desde JS: schema, migraciones, repositorios de solo lectura
-lib/          helpers puros; lib/webview/ = scripts que corren DENTRO del WebView
+hooks/        useRefreshLifecycle (refresh cycle, progress, toast)
+              useFeedCacheStatus (counts and ● / ○ indicator), useFeedContent, ...
+services/     JS logic (one class + singleton per file, dependencies via constructor)
+db/           SQLite from JS: schema, migrations, read-only repositories
+lib/          pure helpers; lib/webview/ = scripts that run INSIDE the WebView
 modules/FeedRefreshModule/
-  src/                       bindings JS, tipos, events.ts, stub web
-  contract/                  contratos compartidos
+  src/                       JS bindings, types, events.ts, web stub
+  contract/                  shared contracts
   android/src/main/java/     Kotlin (worker/ db/ feeds/ articles/)
-  android/src/test/java/     tests unitarios Kotlin
-scripts/android-test/        scripts para manejar la app en un emulador
-docs/                        este documento; history/ = planes y reportes viejos
+  android/src/test/java/     Kotlin unit tests
+scripts/android-test/        scripts to drive the app on an emulator
+docs/                        this document; history/ = old plans and reports
 ```
 
-## 8. Cómo verificar un cambio
+## 8. How to verify a change
 
 ```bash
-npx jest --runInBand        # tests JS (Node 22.5+; el warning de node:sqlite es esperado)
+npx jest --runInBand        # JS tests (Node 22.5+; the node:sqlite warning is expected)
 npx tsc --noEmit
 npm run lint
-./android/gradlew -p android :feed-refresh-module:testDebugUnitTest   # tests Kotlin (JVM)
+./android/gradlew -p android :feed-refresh-module:testDebugUnitTest   # Kotlin tests (JVM)
 ```
 
-En un emulador (detalle en `AGENTS.md`, sección "Emulator Testing"):
-`scripts/android-test/at.sh` permite abrir, mandar a background o matar la app,
-ver el estado de la base (`state`), simular que pasó tiempo (`stale 2`) y tomar
-capturas. Los cambios de Kotlin requieren reinstalar
-(`./android/gradlew -p android app:installDebug`); los de JS recargan con Metro.
+On an emulator: `npm run android:emulator` builds, installs and opens the app
+with Metro (JS changes hot-reload; Kotlin changes need running it again). For
+scripted checks (details in `AGENTS.md`, "Emulator Testing"),
+`scripts/android-test/at.sh` opens, backgrounds or kills the app, shows the
+database state (`state`), simulates elapsed time (`stale 2`) and takes
+screenshots.
 
-Lo que **no** tiene tests automáticos y se verifica en el emulador: el código
-Kotlin que usa SQLite (stores, worker de descarga, limpieza, aplicar, borrar
-cachés).
+Not covered by automated tests and verified on the emulator: the Kotlin code
+that uses SQLite (stores, download worker, cleanup, apply, clear caches).
 
-## 9. Trampas conocidas
+## 9. Known pitfalls
 
-1. **Cambiar un contrato de un solo lado** (nombre de la base, nombre de archivo
-   de artículo, formato del snapshot): hay que cambiar ambos lados y el archivo
-   en `contract/`.
-2. **`article_metadata` es global por URL**, sin relación con generaciones; por
-   eso la limpieza decide por referencias desde los snapshots, no por
-   generación.
-3. **Los jobs fallidos no se reintentan.** Si se cambia, hay que revisar la
-   reconciliación.
-4. **No confiar en los eventos como estado**: si JS no estaba escuchando, se
-   pierden.
-5. **El nativo no usa `ON DELETE CASCADE`**: borra las filas hijas de forma
-   explícita.
-6. **Sitios que rechazan la descarga** (por ejemplo Ars Technica, HTTP 405): sus
-   artículos quedan fallidos. No se intenta saltear esa protección (ver
-   `TODO.md`).
+1. **Changing a contract on one side only** (database name, article file name,
+   snapshot format): change both sides and the file in `contract/`.
+2. **`article_metadata` is global per URL**, unrelated to generations; that is
+   why cleanup decides by references from snapshots, not by generation.
+3. **Failed jobs are not retried.** If that changes, review reconciliation and
+   the feed indicator.
+4. **Do not treat events as state**: if JS was not listening, they are lost.
+5. **Native does not use `ON DELETE CASCADE`**: it deletes child rows explicitly.
+6. **Sites that reject downloads** (e.g. Ars Technica, HTTP 405): their articles
+   stay failed (the feed shows ○). Bypassing that protection is not attempted
+   (see `TODO.md`).

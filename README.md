@@ -100,6 +100,12 @@ export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
 Noticioso is **one app with one boundary**. A native module written in Kotlin
 handles the data; the JavaScript side handles the user.
 
+Why a native module: downloading and parsing dozens of feeds and hundreds of
+articles is heavy work. Done in JavaScript it competes with the UI for the same
+thread, so scrolling and page turns stutter or freeze. The native module does
+that work on its own background thread, so the UI stays responsive while new
+content is being prepared.
+
 ```
  JavaScript (React Native)                   Native module (Kotlin)
  ─────────────────────────                   ──────────────────────
