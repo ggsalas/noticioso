@@ -18,7 +18,7 @@ export default function Feeds() {
     loading,
     error,
     feedArticleCounts,
-    feedArticleCacheComplete,
+    feedDownloadsAttempted,
     updating,
     lastFullRefreshAt,
     shouldShowUpdateToast,
@@ -47,7 +47,7 @@ export default function Feeds() {
   const router = useRouter();
   const [resetNavigation, setResetNavigation] = useState(1);
 
-  // Refresh cache completeness state when this route becomes active
+  // Recompute the ● indicators when this route becomes active
   useFocusEffect(
     useCallback(() => {
       refreshActiveFeedCacheState();
@@ -81,9 +81,9 @@ export default function Feeds() {
         : visibleFeeds
             ?.map(
               ({ name, url }: any) => {
-                const isComplete = feedArticleCacheComplete[url] === true;
+                const isComplete = feedDownloadsAttempted[url] === true;
                 const circleIndicator = isComplete
-                  ? ` <span style="color: ${colors.text};" title="All articles cached" aria-label="All articles cached">●</span>`
+                  ? ` <span style="color: ${colors.text};" title="All articles downloaded or attempted" aria-label="All articles downloaded or attempted">●</span>`
                   : "";
                 return `
                 <div
@@ -96,7 +96,7 @@ export default function Feeds() {
               },
             )
             .join(""),
-    [visibleFeeds, feedArticleCounts, feedArticleCacheComplete, getRouteLink, colors.text],
+    [visibleFeeds, feedArticleCounts, feedDownloadsAttempted, getRouteLink, colors.text],
   );
 
   const html = useMemo(

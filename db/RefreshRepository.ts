@@ -36,6 +36,20 @@ export class RefreshRepository {
     );
     return row?.completed_at ?? null;
   }
+
+  /**
+   * Article URLs of a generation whose download was already attempted
+   * (completed or failed; failed jobs are never retried).
+   */
+  async getAttemptedArticleUrls(refreshId: string): Promise<string[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<{ url: string }>(
+      `SELECT url FROM article_download_jobs
+       WHERE refresh_id = ? AND status IN ('completed', 'failed')`,
+      [refreshId],
+    );
+    return rows.map((row) => row.url);
+  }
 }
 
 export const refreshRepository = new RefreshRepository();

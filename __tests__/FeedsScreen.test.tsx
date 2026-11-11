@@ -71,7 +71,7 @@ const baseContext = {
   loading: null,
   error: null,
   feedArticleCounts: { "https://feed1.com": 5 },
-  feedArticleCacheComplete: {},
+  feedDownloadsAttempted: {},
   updating: null,
   lastFullRefreshAt: "2026-10-03T10:00:00.000Z",
   shouldShowUpdateToast: false,
@@ -167,9 +167,9 @@ describe("Feeds screen (app/feeds)", () => {
     expect(screen.queryByTestId("html-pages-nav")).toBeNull();
   });
 
-  it("shows filled circle indicator when feed cache is complete", () => {
+  it("shows the ● when every article download of the feed was attempted", () => {
     mockContext({
-      feedArticleCacheComplete: { "https://feed1.com": true },
+      feedDownloadsAttempted: { "https://feed1.com": true },
     });
 
     render(<Feeds />);
@@ -179,12 +179,12 @@ describe("Feeds screen (app/feeds)", () => {
     expect(navElement).toBeTruthy();
     // The indicator should be present in the HTML content
     expect(navElement.props.html).toContain("●");
-    expect(navElement.props.html).toContain("All articles cached");
+    expect(navElement.props.html).toContain("All articles downloaded or attempted");
   });
 
-  it("does not show filled circle indicator when feed cache is incomplete", () => {
+  it("does not show the ● while article downloads are still pending", () => {
     mockContext({
-      feedArticleCacheComplete: { "https://feed1.com": false },
+      feedDownloadsAttempted: { "https://feed1.com": false },
     });
 
     render(<Feeds />);

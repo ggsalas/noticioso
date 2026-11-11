@@ -28,7 +28,7 @@ type FeedsContextType = {
   error?: string | null;
   feeds?: Feed[] | null;
   feedArticleCounts: Record<string, number>;
-  feedArticleCacheComplete: Record<string, boolean>;
+  feedDownloadsAttempted: Record<string, boolean>;
   lastFullRefreshAt: string | null;
   shouldShowUpdateToast: boolean;
   articleDownloadProgress: ArticleDownloadProgress | null;
@@ -46,7 +46,7 @@ type FeedsContextType = {
 
 const FeedsContext = createContext<FeedsContextType>({
   feedArticleCounts: {},
-  feedArticleCacheComplete: {},
+  feedDownloadsAttempted: {},
   lastFullRefreshAt: null,
   shouldShowUpdateToast: false,
   articleDownloadProgress: null,
@@ -73,11 +73,11 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
   const [lastFullRefreshAt, setLastFullRefreshAt] = useState<string | null>(null);
 
   const cacheStatus = useFeedCacheStatus();
-  const { reloadCounts, reloadCompleteness, clear: clearCacheStatus } = cacheStatus;
+  const { reloadCounts, reloadDownloadsAttempted, clear: clearCacheStatus } = cacheStatus;
 
   const refresh = useRefreshLifecycle({
     feeds: data,
-    onFeedArticlesDownloaded: cacheStatus.reloadFeedCompleteness,
+    onFeedArticlesDownloaded: cacheStatus.reloadFeedDownloadsAttempted,
     onError: setActionError,
   });
   const { syncToast, dismissToast, reset: resetRefresh } = refresh;
@@ -88,14 +88,14 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
 
     const loadGenerationState = async () => {
       await reloadCounts(data);
-      await reloadCompleteness(data);
+      await reloadDownloadsAttempted(data);
       // applied_at changes only when a pending generation is applied (toast tap)
       setLastFullRefreshAt(await feedContentService.getLastFullRefresh());
       await syncToast();
     };
 
     loadGenerationState();
-  }, [data, reloadCounts, reloadCompleteness, syncToast]);
+  }, [data, reloadCounts, reloadDownloadsAttempted, syncToast]);
 
   // Called after "Clear cache": no generation exists anymore, so every piece of
   // state derived from generations must go (counts, indicators, toast, timestamp).
@@ -108,9 +108,9 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
   // Recompute the cache indicators (called when the feed list screen gets focus)
   const refreshActiveFeedCacheState = useCallback(async () => {
     if (data && data.length > 0) {
-      await reloadCompleteness(data);
+      await reloadDownloadsAttempted(data);
     }
-  }, [data, reloadCompleteness]);
+  }, [data, reloadDownloadsAttempted]);
 
   // Apply the pending generation (toast tap)
   const refreshAndUpdateToast = useCallback(async () => {
@@ -120,9 +120,12 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
     if (applied) {
       await refetchFeeds();
       await reloadCounts(data || []);
+      // New generation: its downloads may not have started yet, so the ● must
+      // be recomputed (it would otherwise keep the previous generation's).
+      await reloadDownloadsAttempted(data || []);
       setLastFullRefreshAt(await feedContentService.getLastFullRefresh());
     }
-  }, [refetchFeeds, data, reloadCounts, dismissToast]);
+  }, [refetchFeeds, data, reloadCounts, reloadDownloadsAttempted, dismissToast]);
 
   const handleImportFeeds = async (feeds: string) => {
     try {
@@ -188,7 +191,7 @@ export function FeedsProvider({ children }: FeedsProviderProps) {
         loading: loading ? { name: "FETCHING", current: 0, total: 0 } : null,
         error: error ?? actionError,
         feedArticleCounts: cacheStatus.feedArticleCounts,
-        feedArticleCacheComplete: cacheStatus.feedArticleCacheComplete,
+        feedDownloadsAttempted: cacheStatus.feedDownloadsAttempted,
         updating: refresh.updating,
         lastFullRefreshAt,
         shouldShowUpdateToast: refresh.shouldShowUpdateToast,

@@ -91,9 +91,12 @@ descarga en curso. Después encola la limpieza.
   está en caché (incluida la ruta `shared/`). Usa el mismo código de descarga,
   pero fuera del worker serial para que el lector no espere detrás de una
   descarga masiva.
-- Un artículo cuenta como cacheado cuando tiene **metadata y archivo**. El
-  círculo ● junto a un feed indica que todos sus artículos lo están; se calcula
-  al momento, no se guarda.
+- Un artículo cuenta como cacheado cuando tiene **metadata y archivo**.
+- El círculo ● junto a un feed indica que **ya se intentó bajar cada artículo**
+  de ese feed en la generación activa (cada job terminó en `completed` o
+  `failed`). Al aplicar una generación nueva ningún feed lo tiene hasta que sus
+  descargas se intentan; un sitio que rechaza la descarga no lo impide. Se
+  calcula al momento desde `article_download_jobs`, no se guarda.
 
 ### Limpieza (GC)
 Corre después de cada aplicar y una vez al abrir la app (por si una limpieza

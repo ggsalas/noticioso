@@ -4,12 +4,12 @@ import type { Feed } from "@/types";
 
 /**
  * Per-feed numbers shown in the feed list, derived from the ACTIVE generation:
- * article counts and the "all articles cached" indicator. Nothing is persisted;
+ * article counts and the ● "downloads attempted" indicator. Nothing is persisted;
  * callers reload when the generation or the cache changes.
  */
 export function useFeedCacheStatus() {
   const [feedArticleCounts, setFeedArticleCounts] = useState<Record<string, number>>({});
-  const [feedArticleCacheComplete, setFeedArticleCacheComplete] = useState<
+  const [feedDownloadsAttempted, setFeedDownloadsAttempted] = useState<
     Record<string, boolean>
   >({});
 
@@ -17,18 +17,18 @@ export function useFeedCacheStatus() {
     setFeedArticleCounts(await feedContentService.getArticleCounts(feeds.map((f) => f.url)));
   }, []);
 
-  const reloadCompleteness = useCallback(async (feeds: Feed[]) => {
-    setFeedArticleCacheComplete(
-      await feedContentService.getCacheCompleteness(feeds.map((f) => f.url)),
+  const reloadDownloadsAttempted = useCallback(async (feeds: Feed[]) => {
+    setFeedDownloadsAttempted(
+      await feedContentService.getDownloadsAttempted(feeds.map((f) => f.url)),
     );
   }, []);
 
   // Recompute a single feed (after its native per-feed download event) instead of
   // rescanning every snapshot.
-  const reloadFeedCompleteness = useCallback(async (feedUrl: string) => {
+  const reloadFeedDownloadsAttempted = useCallback(async (feedUrl: string) => {
     try {
-      const isComplete = await feedContentService.isFeedFullyCached(feedUrl);
-      setFeedArticleCacheComplete((previous) => ({ ...previous, [feedUrl]: isComplete }));
+      const attempted = await feedContentService.isFeedDownloadAttempted(feedUrl);
+      setFeedDownloadsAttempted((previous) => ({ ...previous, [feedUrl]: attempted }));
     } catch (error) {
       // Advisory indicator: a failed check must not disrupt reading
       console.warn(`Could not recalculate article cache status for ${feedUrl}:`, error);
@@ -37,15 +37,15 @@ export function useFeedCacheStatus() {
 
   const clear = useCallback(() => {
     setFeedArticleCounts({});
-    setFeedArticleCacheComplete({});
+    setFeedDownloadsAttempted({});
   }, []);
 
   return {
     feedArticleCounts,
-    feedArticleCacheComplete,
+    feedDownloadsAttempted,
     reloadCounts,
-    reloadCompleteness,
-    reloadFeedCompleteness,
+    reloadDownloadsAttempted,
+    reloadFeedDownloadsAttempted,
     clear,
   };
 }

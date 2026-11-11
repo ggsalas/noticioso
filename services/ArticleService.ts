@@ -86,24 +86,6 @@ export class ArticleService {
     }
   };
 
-  /**
-   * The URLs, among the given ones, that are fully cached (metadata row AND HTML
-   * file). Used for the "all articles cached" indicator.
-   */
-  getFullyCachedUrls = async (urls: string[]): Promise<string[]> => {
-    if (urls.length === 0) return [];
-
-    const withMetadata = await this.metadataRepo.getMetadataPresentUrls(urls);
-
-    return withMetadata.filter((url) => {
-      try {
-        return new File(this.getFilePath(url)).exists;
-      } catch {
-        return false;
-      }
-    });
-  };
-
   private getFilePath = (url: string): string => {
     return new File(htmlCacheDir, articleFileName(url)).uri;
   };

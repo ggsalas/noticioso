@@ -30,34 +30,6 @@ export class ArticleMetadataRepository {
       excerpt: row.excerpt || "",
     };
   }
-
-  /**
-   * Get URLs that have metadata rows from the provided list.
-   * Chunks queries to stay below SQLite bind variable limits.
-   */
-  async getMetadataPresentUrls(urls: string[]): Promise<string[]> {
-    if (urls.length === 0) return [];
-
-    const db = await getDatabase();
-    const presentUrls: string[] = [];
-
-    // SQLite bind limit is typically 999, use chunks of 500 to be safe
-    const CHUNK_SIZE = 500;
-
-    for (let i = 0; i < urls.length; i += CHUNK_SIZE) {
-      const chunk = urls.slice(i, i + CHUNK_SIZE);
-      const placeholders = chunk.map(() => "?").join(",");
-
-      const rows = await db.getAllAsync<{ url: string }>(
-        `SELECT url FROM article_metadata WHERE url IN (${placeholders})`,
-        chunk
-      );
-
-      presentUrls.push(...rows.map(row => row.url));
-    }
-
-    return presentUrls;
-  }
 }
 
 export const articleMetadataRepository = new ArticleMetadataRepository();

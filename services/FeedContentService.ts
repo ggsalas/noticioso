@@ -82,54 +82,59 @@ export class FeedContentService {
   };
 
   /**
-   * For each feed, whether ALL its articles in the active generation are cached
-   * (metadata + HTML file). Nothing is persisted: it is derived on demand.
+   * For each feed, whether the native module already TRIED to download every
+   * article it lists in the active generation (each one completed or failed).
+   * This is the ● in the feed list: a freshly applied generation shows none
+   * until its downloads are attempted. Derived on demand from
+   * article_download_jobs; nothing extra is persisted.
    * - no snapshot for the feed -> false
    * - snapshot with zero articles -> omitted (the UI shows no indicator)
    */
-  getCacheCompleteness = async (feedUrls: string[]): Promise<Record<string, boolean>> => {
-    const completeness: Record<string, boolean> = {};
+  getDownloadsAttempted = async (feedUrls: string[]): Promise<Record<string, boolean>> => {
+    const attempted: Record<string, boolean> = {};
 
     const active = await refreshRepository.getActive();
-    if (!active) return completeness;
+    if (!active) return attempted;
 
     const snapshots = await feedSnapshotRepository.getAllForRefresh(active.refreshId);
     const snapshotByFeed = new Map(snapshots.map((snapshot) => [snapshot.feedUrl, snapshot]));
+    const attemptedUrls = new Set(await refreshRepository.getAttemptedArticleUrls(active.refreshId));
 
     await Promise.allSettled(
       feedUrls.map(async (feedUrl) => {
         const snapshot = snapshotByFeed.get(feedUrl);
         if (!snapshot) {
-          completeness[feedUrl] = false;
+          attempted[feedUrl] = false;
           return;
         }
 
         const urls = this.articleUrls(snapshot.data);
         if (urls.length === 0) return;
 
-        completeness[feedUrl] = await this.areAllCached(urls);
+        attempted[feedUrl] = urls.every((url) => attemptedUrls.has(url));
       }),
     );
 
-    return completeness;
+    return attempted;
   };
 
-  /** Same check as getCacheCompleteness for a single feed (after a native per-feed event). */
-  isFeedFullyCached = async (feedUrl: string): Promise<boolean> => {
-    const snapshot = await this.getSnapshot(feedUrl);
+  /** Same check as getDownloadsAttempted for a single feed (after a native per-feed event). */
+  isFeedDownloadAttempted = async (feedUrl: string): Promise<boolean> => {
+    const active = await refreshRepository.getActive();
+    if (!active) return false;
+
+    const snapshot = await feedSnapshotRepository.get(active.refreshId, feedUrl);
     const urls = snapshot ? this.articleUrls(snapshot.data) : [];
-    return urls.length > 0 && (await this.areAllCached(urls));
+    if (urls.length === 0) return false;
+
+    const attemptedUrls = new Set(await refreshRepository.getAttemptedArticleUrls(active.refreshId));
+    return urls.every((url) => attemptedUrls.has(url));
   };
 
   private articleUrls(data: FeedData): string[] {
     return (data.rss?.channel?.item ?? [])
       .map((item) => item.link)
       .filter((url) => url && url.trim().length > 0);
-  }
-
-  private async areAllCached(urls: string[]): Promise<boolean> {
-    const cached = new Set(await this.articles.getFullyCachedUrls(urls));
-    return urls.every((url) => cached.has(url));
   }
 
   /**

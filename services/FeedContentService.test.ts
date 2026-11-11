@@ -3,7 +3,7 @@ import { ArticleService } from "./ArticleService";
 import { refreshRepository, feedSnapshotRepository } from "@/db";
 
 jest.mock("@/db", () => ({
-  refreshRepository: { getActive: jest.fn() },
+  refreshRepository: { getActive: jest.fn(), getAttemptedArticleUrls: jest.fn() },
   feedSnapshotRepository: { get: jest.fn(), getAllForRefresh: jest.fn() },
 }));
 
@@ -14,7 +14,6 @@ const mockFeedSnapshotRepo = feedSnapshotRepository as jest.Mocked<
 
 const mockArticleCache = {
   getMetadata: jest.fn(),
-  getFullyCachedUrls: jest.fn(),
 };
 
 const feedContentService = new FeedContentService(
@@ -134,7 +133,7 @@ describe("FeedContentService", () => {
     });
   });
 
-  describe("cache completeness", () => {
+  describe("downloads attempted (the ● indicator)", () => {
     const URLS = ["https://example.com/article1", "https://example.com/article2"];
     const emptySnapshot = {
       ...snapshot,
@@ -147,16 +146,19 @@ describe("FeedContentService", () => {
       mockFeedSnapshotRepo.getAllForRefresh.mockResolvedValue([snapshot, emptySnapshot] as never);
     });
 
-    it("is true only when every article of the feed is cached", async () => {
-      mockArticleCache.getFullyCachedUrls.mockResolvedValueOnce(URLS);
-      expect(await feedContentService.getCacheCompleteness([FEED_URL])).toEqual({ [FEED_URL]: true });
+    it("is true only when every article of the feed was attempted (completed or failed)", async () => {
+      mockRefreshRepo.getAttemptedArticleUrls.mockResolvedValueOnce(URLS);
+      expect(await feedContentService.getDownloadsAttempted([FEED_URL])).toEqual({ [FEED_URL]: true });
 
-      mockArticleCache.getFullyCachedUrls.mockResolvedValueOnce([URLS[0]]);
-      expect(await feedContentService.getCacheCompleteness([FEED_URL])).toEqual({ [FEED_URL]: false });
+      // e.g. a freshly applied generation whose downloads are still running
+      mockRefreshRepo.getAttemptedArticleUrls.mockResolvedValueOnce([URLS[0]]);
+      expect(await feedContentService.getDownloadsAttempted([FEED_URL])).toEqual({ [FEED_URL]: false });
+
+      expect(mockRefreshRepo.getAttemptedArticleUrls).toHaveBeenCalledWith(activeRefresh.refreshId);
     });
 
     it("is false for a feed without snapshot and omitted for a feed with no articles", async () => {
-      const result = await feedContentService.getCacheCompleteness([
+      const result = await feedContentService.getDownloadsAttempted([
         "https://missing.com/feed",
         "https://empty.com/feed",
       ]);
@@ -167,20 +169,20 @@ describe("FeedContentService", () => {
     it("is empty when there is no active generation", async () => {
       mockRefreshRepo.getActive.mockResolvedValue(null);
 
-      expect(await feedContentService.getCacheCompleteness([FEED_URL])).toEqual({});
+      expect(await feedContentService.getDownloadsAttempted([FEED_URL])).toEqual({});
     });
 
     it("checks a single feed", async () => {
       mockFeedSnapshotRepo.get.mockResolvedValue(snapshot as never);
 
-      mockArticleCache.getFullyCachedUrls.mockResolvedValueOnce(URLS);
-      expect(await feedContentService.isFeedFullyCached(FEED_URL)).toBe(true);
+      mockRefreshRepo.getAttemptedArticleUrls.mockResolvedValueOnce(URLS);
+      expect(await feedContentService.isFeedDownloadAttempted(FEED_URL)).toBe(true);
 
-      mockArticleCache.getFullyCachedUrls.mockResolvedValueOnce([]);
-      expect(await feedContentService.isFeedFullyCached(FEED_URL)).toBe(false);
+      mockRefreshRepo.getAttemptedArticleUrls.mockResolvedValueOnce([]);
+      expect(await feedContentService.isFeedDownloadAttempted(FEED_URL)).toBe(false);
 
       mockFeedSnapshotRepo.get.mockResolvedValue(null);
-      expect(await feedContentService.isFeedFullyCached(FEED_URL)).toBe(false);
+      expect(await feedContentService.isFeedDownloadAttempted(FEED_URL)).toBe(false);
     });
   });
 

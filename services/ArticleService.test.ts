@@ -3,7 +3,6 @@ import { ArticleMetadataRepository } from "@/db/ArticleMetadataRepository";
 
 const mockRepo = {
   getMetadata: jest.fn(),
-  getMetadataPresentUrls: jest.fn(),
 };
 const mockDownload = jest.fn();
 
@@ -110,13 +109,6 @@ describe("ArticleService", () => {
       mockRepo.getMetadata.mockResolvedValueOnce(null);
 
       expect(await service.getHtml(URL)).toBeNull();
-    });
-  });
-
-  describe("getFullyCachedUrls", () => {
-    it("does not query for an empty list", async () => {
-      expect(await service.getFullyCachedUrls([])).toEqual([]);
-      expect(mockRepo.getMetadataPresentUrls).not.toHaveBeenCalled();
     });
   });
 });

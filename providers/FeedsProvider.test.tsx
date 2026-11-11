@@ -16,8 +16,8 @@ jest.mock("@/services/FeedService", () => ({
 jest.mock("@/services/FeedContentService", () => ({
   feedContentService: {
     getArticleCounts: jest.fn().mockResolvedValue({}),
-    getCacheCompleteness: jest.fn().mockResolvedValue({}),
-    isFeedFullyCached: jest.fn().mockResolvedValue(false),
+    getDownloadsAttempted: jest.fn().mockResolvedValue({}),
+    isFeedDownloadAttempted: jest.fn().mockResolvedValue(false),
     getFeedContent: jest.fn(),
     getLastFullRefresh: jest.fn(),
   },
@@ -469,7 +469,7 @@ describe("FeedsProvider", () => {
     });
   });
 
-  describe("feedArticleCacheComplete", () => {
+  describe("feedDownloadsAttempted", () => {
     it("should initialize with empty completeness map", () => {
       mockUseAsyncFn.mockReturnValue({
         data: mockFeeds,
@@ -480,7 +480,7 @@ describe("FeedsProvider", () => {
 
       const { result } = renderHook(useFeedsContext, { wrapper });
 
-      expect(result.current.feedArticleCacheComplete).toEqual({});
+      expect(result.current.feedDownloadsAttempted).toEqual({});
     });
 
     it("should expose refreshActiveFeedCacheState callback", () => {
