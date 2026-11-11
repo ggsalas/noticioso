@@ -2,16 +2,18 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Paths, File, Directory } from "expo-file-system";
 
 /**
- * LegacyCacheCleanup handles one-time destructive cleanup of Stage 1 data.
- * 
- * Stage 1 was never in production. This cleanup:
- * - Preserves @noticioso-feedList (user data)
- * - Removes all legacy AsyncStorage cache keys
- * - Removes old HTML article cache files
- * - Marks completion so it never runs again
- * 
- * This runs BEFORE the new schema is initialized, so any old database
- * will be detected and reset by the migration layer.
+ * One-time cleanup when upgrading from the released app (`main`, before the
+ * SQLite + native pipeline). That version kept its caches in AsyncStorage
+ * (feed cache, article metadata/index, last refresh, ranking) and article HTML
+ * in <cache>/article-html/ with the old file names. The new app reads none of it.
+ *
+ * - Preserves @noticioso-feedList (the user's feeds)
+ * - Removes the old AsyncStorage cache keys
+ * - Removes the old HTML article files
+ * - Stores a marker so it only does work once (retried on next start if it fails)
+ *
+ * Runs at startup from initializeDatabase(), BEFORE migrations.
+ * Temporary: remove once every device has opened this version (see TODO.md).
  */
 
 const LEGACY_CLEANUP_MARKER = "@noticioso-legacyCleanupCompleted";

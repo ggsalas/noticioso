@@ -15,14 +15,10 @@ Open follow-ups. Finished work lives in git history and in `docs/architecture.md
 - [ ] **Per-feed failure UI.** Failures are stored in `refresh_feeds.status` (and the failed feed
       keeps its last good content), but nothing tells the user a feed failed.
 
-- [ ] **Shared URL completion counts.** When the same article URL appears in several feeds, only
-      the first feed owns the download job; per-feed progress counts for the other feeds may not
-      reflect that article's outcome.
-
 ## UI
 
 - [ ] **Cold-start download progress isn't shown.** The first `onArticleDownloadFeedStarted` can
-      be emitted before JS subscribes, so the header shows no "Fetching articles" while the
+      be emitted before JS subscribes, so the header shows no "Downloading articles" while the
       initial reconciliation downloads. Downloads work; UI only. Option: on mount, if
       `FeedRefreshModule.isWorkerBusy()`, show a generic progress state.
 
@@ -46,7 +42,7 @@ Open follow-ups. Finished work lives in git history and in `docs/architecture.md
 
 ## Housekeeping
 
-- [ ] **Local Android SDK folders inside the repo root** (`build-tools/`, `platforms/`,
-      `platform-tools/`, `licenses/`): git-ignored leftovers from an SDK install pointed at the
-      repo. The SDK in use is `/opt/homebrew/share/android-commandlinetools`. Safe to delete from
-      disk.
+- [ ] **Remove `db/legacy/LegacyCacheCleanup.ts` after the release.** It deletes, once, the
+      AsyncStorage caches and old article files of the released app (`main`) on the first start of
+      the new version. Once every device has opened the new version it does nothing: delete it,
+      its test, its call in `db/initializer.ts` and its export in `db/index.ts`.
