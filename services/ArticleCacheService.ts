@@ -1,19 +1,8 @@
-import { storageService, StorageService } from "./StorageService";
+import { articleCacheRepository, ArticleCacheRepository } from "@/infrastructure/ArticleCacheRepository";
 import { Paths, File, Directory } from "expo-file-system";
-import type {
-  ArticleMetadata,
-  ArticleHtmlCacheEntry,
-  ArticleCacheIndex,
-} from "~/types";
+import type { ArticleMetadata } from "~/types";
 
-const ARTICLE_HTML_CACHE_PREFIX = "@noticioso-articleHtmlCache-";
-const ARTICLE_INDEX_KEY = "@noticioso-articleHtmlCache-index";
-
-// File system directory for full HTML
-const htmlCacheDir = new Directory(Paths.cache, "article-html");
-
-const MAX_ARTICLES = 300;
-const MAX_ARTICLE_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+// Stage 3: MAX_ARTICLES limit removed. Orphan GC deferred to Stage 4.
 
 // Regex patterns for metadata extraction (no DOM parsing)
 function extractHeroImage(html: string): string | undefined {
@@ -83,40 +72,25 @@ function extractExcerpt(html: string): string {
   return "";
 }
 
+// File system directory for full HTML
+const htmlCacheDir = new Directory(Paths.cache, "article-html");
+
 export class ArticleCacheService {
-  constructor(private storage: StorageService) {}
+  constructor(private articleCacheRepo: ArticleCacheRepository) {}
 
   // Check if URL exists in cache
   has = async (url: string): Promise<boolean> => {
-    const entry = await this.storage.getItem<ArticleHtmlCacheEntry>(
-      this.cacheKey(url),
-    );
-    return entry !== null;
+    return this.articleCacheRepo.has(url);
   };
 
-  // Get metadata (heroImage, author, etc.) from AsyncStorage
+  // Get metadata (heroImage, author, etc.) from SQLite
   getMetadata = async (url: string): Promise<ArticleMetadata | null> => {
-    const entry = await this.storage.getItem<ArticleHtmlCacheEntry>(
-      this.cacheKey(url),
-    );
-    if (!entry) return null;
-
-    // Return metadata fields directly
-    return {
-      heroImage: entry.heroImage,
-      byline: entry.byline || "",
-      title: entry.title || "",
-      excerpt: entry.excerpt || "",
-    };
+    return this.articleCacheRepo.getMetadata(url);
   };
 
-  // Save: full HTML to filesystem, metadata to AsyncStorage
+  // Save: full HTML to filesystem, metadata to SQLite
   setHtml = async (url: string, html: string): Promise<void> => {
-    // Make room if at limit
-    const index = await this.getIndex();
-    if (Object.keys(index).length >= MAX_ARTICLES) {
-      await this.removeOldest();
-    }
+    const now = new Date().toISOString();
 
     // 1. Save FULL HTML to file system (for article viewing)
     try {
@@ -129,44 +103,29 @@ export class ArticleCacheService {
       console.warn("Failed to save HTML to file system:", error);
     }
 
-    // 2. Extract metadata and save to AsyncStorage (as fields, not JSON string)
-    const entry: ArticleHtmlCacheEntry = {
+    // 2. Extract metadata and save to SQLite
+    const metadata = {
       heroImage: extractHeroImage(html),
       byline: extractAuthor(html),
       title: extractTitle(html),
       excerpt: extractExcerpt(html),
-      fetchedAt: new Date().toISOString(),
-      lastAccessedAt: new Date().toISOString(),
+      fetchedAt: now,
+      lastAccessedAt: now,
     };
 
-    await this.storage.setItem(this.cacheKey(url), entry);
-    await this.addToIndex(url, entry.fetchedAt);
+    await this.articleCacheRepo.setMetadata(url, metadata);
   };
 
   // Get full HTML from file system
   getHtml = async (url: string): Promise<string | null> => {
-    const entry = await this.storage.getItem<ArticleHtmlCacheEntry>(
-      this.cacheKey(url),
-    );
-    if (!entry) return null;
+    const metadata = await this.articleCacheRepo.getMetadata(url);
+    if (!metadata) return null;
 
     try {
       const file = new File(this.getFilePath(url));
       if (!file.exists) return null;
 
       const html = await file.text();
-
-      // Update lastAccessedAt for LRU
-      entry.lastAccessedAt = new Date().toISOString();
-      await this.storage.setItem(this.cacheKey(url), entry);
-
-      // Update index
-      const index = await this.getIndex();
-      if (index[url]) {
-        index[url].lastAccessedAt = entry.lastAccessedAt;
-        await this.updateIndex(index);
-      }
-
       return html;
     } catch {
       return null;
@@ -176,62 +135,6 @@ export class ArticleCacheService {
   private getFilePath = (url: string): string => {
     const safeName = encodeURIComponent(url.replace(/[^a-zA-Z0-9]/g, "_"));
     return new File(htmlCacheDir, `${safeName}.html`).uri;
-  };
-
-  private cacheKey = (url: string): string =>
-    `${ARTICLE_HTML_CACHE_PREFIX}${url}`;
-
-  // Index management
-  private getIndex = async (): Promise<ArticleCacheIndex> => {
-    const index =
-      await this.storage.getItem<ArticleCacheIndex>(ARTICLE_INDEX_KEY);
-    return index || {};
-  };
-
-  private updateIndex = async (index: ArticleCacheIndex): Promise<void> => {
-    await this.storage.setItem(ARTICLE_INDEX_KEY, index);
-  };
-
-  private addToIndex = async (url: string, cachedAt: string): Promise<void> => {
-    const index = await this.getIndex();
-    index[url] = { cachedAt, lastAccessedAt: cachedAt };
-    await this.updateIndex(index);
-  };
-
-  private removeFromIndex = async (url: string): Promise<void> => {
-    const index = await this.getIndex();
-    delete index[url];
-    await this.updateIndex(index);
-  };
-
-  // Eviction - delete from both file system and index
-  private removeOldest = async (): Promise<void> => {
-    const index = await this.getIndex();
-    const entries = Object.entries(index);
-    const now = Date.now();
-
-    if (entries.length === 0) return;
-
-    // Priority 1: Articles older than 7 days that were NEVER read
-    const neverReadOld = entries.find(([, meta]) => {
-      const age = now - new Date(meta.cachedAt).getTime();
-      const neverOpened = meta.lastAccessedAt === meta.cachedAt;
-      return age > MAX_ARTICLE_AGE_MS && neverOpened;
-    });
-
-    if (neverReadOld) {
-      await this.delete(neverReadOld[0]);
-      return;
-    }
-
-    // Priority 2: Fallback to LRU
-    const oldest = entries.reduce((prev, curr) =>
-      new Date(prev[1].lastAccessedAt) < new Date(curr[1].lastAccessedAt)
-        ? prev
-        : curr,
-    );
-
-    await this.delete(oldest[0]);
   };
 
   private delete = async (url: string): Promise<void> => {
@@ -245,8 +148,7 @@ export class ArticleCacheService {
       // File might not exist
     }
 
-    await this.storage.removeItem(this.cacheKey(url));
-    await this.removeFromIndex(url);
+    await this.articleCacheRepo.delete(url);
   };
 
   // Clear file cache
@@ -262,6 +164,32 @@ export class ArticleCacheService {
       console.warn("Failed to clear file cache:", error);
     }
   };
+
+  /**
+   * Get URLs from the provided list that have both metadata row AND final HTML file.
+   * Used for cache completeness checks.
+   */
+  getFullyCachedUrls = async (urls: string[]): Promise<string[]> => {
+    if (urls.length === 0) return [];
+
+    // Get URLs with metadata rows
+    const metadataPresentUrls = await this.articleCacheRepo.getMetadataPresentUrls(urls);
+
+    // Filter by file existence
+    const fullyCachedUrls: string[] = [];
+    for (const url of metadataPresentUrls) {
+      try {
+        const file = new File(this.getFilePath(url));
+        if (file.exists) {
+          fullyCachedUrls.push(url);
+        }
+      } catch {
+        // File check failed, skip this URL
+      }
+    }
+
+    return fullyCachedUrls;
+  };
 }
 
-export const articleCacheService = new ArticleCacheService(storageService);
+export const articleCacheService = new ArticleCacheService(articleCacheRepository);

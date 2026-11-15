@@ -1,0 +1,8 @@
+{
+  "name": "feed-refresh-module",
+  "version": "1.0.0",
+  "description": "Native module for background feed refresh",
+  "main": "index.ts",
+  "author": "",
+  "license": "MIT"
+}

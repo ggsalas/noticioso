@@ -1,0 +1,6 @@
+[
+  { "id": "t1", "name": "Hacker News", "url": "https://hnrss.org/frontpage?count=10", "oldestArticle": 1, "lang": "en" },
+  { "id": "t2", "name": "Ars Technica", "url": "https://feeds.arstechnica.com/arstechnica/index", "oldestArticle": 1, "lang": "en" },
+  { "id": "t3", "name": "El País", "url": "https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada", "oldestArticle": 1, "lang": "es" },
+  { "id": "t4", "name": "Invalid feed", "url": "https://invalid.example.invalid/rss.xml", "oldestArticle": 1, "lang": "en" }
+]

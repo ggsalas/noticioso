@@ -70,3 +70,22 @@ services/
 - We already tried escaping with `content.replace(/<\/script/gi, '<\\/script')` and it did NOT work — articles rendered blank
 - An alternative to base64 would be stripping `<script>` tags from the HTML before embedding, but base64 is more robust
 - The encoding is done in `lib/horizontalNavigation/index.js` and decoded in `lib/articleParser.js`
+
+## Emulator Testing (agents can verify on-device by themselves)
+
+A local AVD `noticioso-test` (android-36, `google_apis` arm64 image — allows `adb root`) plus a tiny adb harness in `scripts/android-test/at.sh`:
+
+```bash
+export PATH=/opt/homebrew/share/android-commandlinetools/platform-tools:$PATH
+scripts/android-test/at.sh boot                 # headless emulator, waits for boot
+./android/gradlew -p android app:installDebug -x lint -x test -PreactNativeArchitectures=arm64-v8a
+npx expo start --port 8081 &                    # Metro (JS hot reload); then: adb reverse tcp:8081 tcp:8081
+scripts/android-test/at.sh seed-feeds scripts/android-test/feeds.json   # test feed list into AsyncStorage
+scripts/android-test/at.sh launch | kill | bg   # open / process death / background
+scripts/android-test/at.sh state                # generations, pointers, jobs, cached HTML count
+scripts/android-test/at.sh stale 2              # pretend the last feed pass was 2h ago
+scripts/android-test/at.sh shot | ui | tap X Y  # screenshot / visible texts+bounds / tap
+```
+
+- Kotlin changes need `installDebug`; JS changes reload through Metro.
+- The yellow dev "Open debugger to view warnings" banner can cover the update toast: dismiss it (tap its ✕) first.
