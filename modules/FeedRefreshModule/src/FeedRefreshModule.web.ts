@@ -16,13 +16,20 @@ class FeedRefreshModule extends NativeModule<FeedRefreshModuleEvents> {
     return false;
   }
 
+  async downloadArticle(url: string): Promise<string> {
+    throw new Error('Web platform not supported');
+  }
+
   async collectGarbage(): Promise<string> {
     return 'Web platform not supported';
   }
 
-  async clearArticleDownloadJobs(): Promise<void> {
-    // Web stub - no-op on web platform
-    return;
+  async applyPendingRefresh(): Promise<boolean> {
+    return false;
+  }
+
+  async clearCaches(): Promise<string> {
+    return 'Web platform not supported';
   }
 }
 

@@ -1,15 +1,22 @@
 import { Link, Stack, useRouter, useFocusEffect } from "expo-router";
 import { Pressable, Text, StyleSheet, View, ActivityIndicator } from "react-native";
 import { useCallback, useMemo, useState } from "react";
-import { HandleRouterLinkData } from "@/types";
+import { FeedDownloadStatus, HandleRouterLinkData } from "@/types";
 import { useThemeContext } from "@/theme/ThemeProvider";
 import { HTMLPagesNav } from "@/components/HTMLPagesNav";
 import { NewArticlesToast } from "@/components/NewArticlesToast";
 import { usePreviousRoute } from "~/providers/PreviousRoute";
 import { useFeedsContext } from "@/providers/FeedsProvider";
 import { MaterialIcons } from "@expo/vector-icons";
-import { formatLastRefresh } from "~/formatters/timeFormatters";
+import { formatLastRefresh } from "~/lib/timeFormatters";
 import { useWebViewHighlight } from "~/hooks/useWebViewHighlight";
+
+// Shown next to a feed once every article download was attempted ("pending": nothing)
+const DOWNLOAD_INDICATORS: Record<FeedDownloadStatus, { symbol: string; label: string } | null> = {
+  pending: null,
+  done: { symbol: "●", label: "Articles downloaded" },
+  allFailed: { symbol: "○", label: "No article could be downloaded" },
+};
 
 export default function Feeds() {
   const { colors, fonts, sizes, style } = useStyles();
@@ -18,7 +25,7 @@ export default function Feeds() {
     loading,
     error,
     feedArticleCounts,
-    feedArticleCacheComplete,
+    feedDownloadStatus,
     updating,
     lastFullRefreshAt,
     shouldShowUpdateToast,
@@ -47,7 +54,7 @@ export default function Feeds() {
   const router = useRouter();
   const [resetNavigation, setResetNavigation] = useState(1);
 
-  // Refresh cache completeness state when this route becomes active
+  // Recompute the ● indicators when this route becomes active
   useFocusEffect(
     useCallback(() => {
       refreshActiveFeedCacheState();
@@ -81,9 +88,9 @@ export default function Feeds() {
         : visibleFeeds
             ?.map(
               ({ name, url }: any) => {
-                const isComplete = feedArticleCacheComplete[url] === true;
-                const circleIndicator = isComplete
-                  ? ` <span style="color: ${colors.text};" title="All articles cached" aria-label="All articles cached">●</span>`
+                const indicator = DOWNLOAD_INDICATORS[feedDownloadStatus[url]];
+                const circleIndicator = indicator
+                  ? ` <span style="color: ${colors.text};" title="${indicator.label}" aria-label="${indicator.label}">${indicator.symbol}</span>`
                   : "";
                 return `
                 <div
@@ -96,7 +103,7 @@ export default function Feeds() {
               },
             )
             .join(""),
-    [visibleFeeds, feedArticleCounts, feedArticleCacheComplete, getRouteLink, colors.text],
+    [visibleFeeds, feedArticleCounts, feedDownloadStatus, getRouteLink, colors.text],
   );
 
   const html = useMemo(
@@ -147,13 +154,15 @@ export default function Feeds() {
               >
                 Noticioso
               </Text>
-              <Text
-                style={style.headerSubtitle}
-                numberOfLines={1}
-                ellipsizeMode="tail"
-              >
-                {`Last full update at ${formatLastRefresh(lastFullRefreshAt)}`}
-              </Text>
+              {lastFullRefreshAt ? (
+                <Text
+                  style={style.headerSubtitle}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {`Last full update at ${formatLastRefresh(lastFullRefreshAt)}`}
+                </Text>
+              ) : null}
             </View>
           ),
           headerRight: () => {
@@ -162,7 +171,11 @@ export default function Feeds() {
             const workerLabel = isUpdatingFeeds
               ? "Updating feeds"
               : isFetchingArticles
-                ? `Fetching articles ${articleDownloadProgress.feedIndex}/${articleDownloadProgress.feedCount}`
+                ? // feedIndex = feeds already done, so the one downloading now is the next
+                  `Downloading articles for feed ${Math.min(
+                    articleDownloadProgress.feedIndex + 1,
+                    articleDownloadProgress.feedCount,
+                  )}/${articleDownloadProgress.feedCount}`
                 : null;
 
             return (

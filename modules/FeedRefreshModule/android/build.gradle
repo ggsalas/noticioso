@@ -15,4 +15,17 @@ android {
   lintOptions {
     abortOnError false
   }
+  testOptions {
+    // android.util.Log etc. return defaults instead of throwing in JVM unit tests
+    unitTests.returnDefaultValues = true
+  }
+}
+
+// JVM unit tests for the pure logic (parser, date filter, JSON, file names, metadata).
+// kxml2 and org.json provide real implementations of APIs that are only stubs in
+// android.jar on the JVM. Run: ./android/gradlew -p android :feed-refresh-module:testDebugUnitTest
+dependencies {
+  testImplementation 'junit:junit:4.13.2'
+  testImplementation 'net.sf.kxml:kxml2:2.3.0'
+  testImplementation 'org.json:json:20240303'
 }

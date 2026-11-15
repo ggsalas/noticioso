@@ -5,7 +5,7 @@ import { WebView, WebViewMessageEvent } from "react-native-webview";
 import {
   getHorizontalNavigationPage,
   script,
-} from "../../lib/horizontalNavigation";
+} from "../../lib/webview/horizontalNavigation";
 import { Labels } from "./Labels";
 import { usePanResponder } from "./usePanResponder";
 import {

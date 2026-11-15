@@ -1,0 +1,31 @@
+{
+  "date": "2026-11-10T00:00:00.000Z",
+  "feedType": "rss",
+  "rss": {
+    "channel": {
+      "title": "Contract Feed",
+      "description": "A feed used to pin the snapshot format",
+      "language": "en",
+      "link": "https://example.com",
+      "lastBuildDate": "Tue, 10 Nov 2026 10:00:00 +0000",
+      "item": [
+        {
+          "title": "First \"quoted\" title",
+          "link": "https://example.com/1",
+          "pubDate": "Tue, 10 Nov 2026 09:00:00 +0000",
+          "author": "Jane",
+          "description": "Line one\nLine two",
+          "content:encoded": "<p>Body</p>"
+        },
+        {
+          "title": "Second",
+          "link": "https://example.com/2",
+          "pubDate": "",
+          "author": "",
+          "description": "",
+          "content:encoded": ""
+        }
+      ]
+    }
+  }
+}

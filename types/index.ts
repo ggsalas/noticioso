@@ -157,3 +157,11 @@ export type ArticleCacheIndex = Record<
     lastAccessedAt: string;
   }
 >;
+
+/**
+ * Article downloads of a feed in the active generation (the indicator in the feed list):
+ * - "pending":   some article download was not attempted yet -> no indicator
+ * - "done":      every article attempted, at least one downloaded -> ●
+ * - "allFailed": every article attempted, none downloaded -> ○
+ */
+export type FeedDownloadStatus = "pending" | "done" | "allFailed";

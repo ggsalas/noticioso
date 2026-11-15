@@ -1,17 +1,11 @@
 import { StorageService } from "./StorageService";
-import { articleCacheService } from "./ArticleCacheService";
-import { articleCacheRepository } from "@/infrastructure/ArticleCacheRepository";
-import { refreshRepository } from "@/infrastructure/RefreshRepository";
-import { activeRefreshRepository } from "@/infrastructure/ActiveRefreshRepository";
-import { pendingRefreshRepository } from "@/infrastructure/PendingRefreshRepository";
-import { lastFetchCompletionRepository } from "@/infrastructure/LastFetchCompletionRepository";
 import type { AsyncStorageStatic } from "@react-native-async-storage/async-storage";
 
 // Mock the native module
 jest.mock("@/modules/FeedRefreshModule/src/FeedRefreshModule", () => ({
   __esModule: true,
   default: {
-    clearArticleDownloadJobs: jest.fn().mockResolvedValue(undefined),
+    clearCaches: jest.fn().mockResolvedValue("Caches cleared"),
   },
 }));
 
@@ -106,27 +100,22 @@ describe("StorageService", () => {
   });
 
   describe("clearCaches", () => {
-    it("clears native article download job state and HTML cache", async () => {
-      const FeedRefreshModule = require("@/modules/FeedRefreshModule/src/FeedRefreshModule").default;
-      const clearJobs = jest.spyOn(FeedRefreshModule, "clearArticleDownloadJobs").mockResolvedValue(undefined);
-      const clearHtml = jest.spyOn(articleCacheService, "clearFileCache").mockResolvedValue(undefined);
-      const clearRepos = [
-        jest.spyOn(refreshRepository, "clear").mockResolvedValue(undefined),
-        jest.spyOn(activeRefreshRepository, "clear").mockResolvedValue(undefined),
-        jest.spyOn(pendingRefreshRepository, "clear").mockResolvedValue(undefined),
-        jest.spyOn(lastFetchCompletionRepository, "clear").mockResolvedValue(undefined),
-        jest.spyOn(articleCacheRepository, "clear").mockResolvedValue(undefined),
-      ];
+    const FeedRefreshModule = require("@/modules/FeedRefreshModule/src/FeedRefreshModule").default;
+
+    it("delegates to the native module and never touches the feed list", async () => {
+      FeedRefreshModule.clearCaches.mockResolvedValueOnce("Caches cleared");
 
       await storageService.clearCaches();
 
-      expect(clearJobs).toHaveBeenCalledTimes(1);
-      expect(clearHtml).toHaveBeenCalledTimes(1);
-      expect(mockStorage.removeItem).not.toHaveBeenCalledWith("@noticioso-feedList");
+      expect(FeedRefreshModule.clearCaches).toHaveBeenCalledTimes(1);
+      expect(mockStorage.removeItem).not.toHaveBeenCalled();
+      expect(mockStorage.clear).not.toHaveBeenCalled();
+    });
 
-      clearJobs.mockRestore();
-      clearHtml.mockRestore();
-      clearRepos.forEach((spy) => spy.mockRestore());
+    it("reports a native failure", async () => {
+      FeedRefreshModule.clearCaches.mockRejectedValueOnce(new Error("disk error"));
+
+      await expect(storageService.clearCaches()).rejects.toThrow("Failed to clear caches");
     });
   });
 

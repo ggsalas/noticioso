@@ -10,36 +10,62 @@
 ## Build/Test/Lint Commands
 
 - `npm run lint` - Run Expo linter
-- `npm test` - Run Jest tests in watch mode (single test: `npm test -- --testNamePattern="test name"`)
+- `npx jest --runInBand` - Run all Jest tests once (`npm test` runs them in watch mode; single test: `npm test -- --testNamePattern="test name"`)
+- `npx tsc --noEmit` - Type check
+- `./android/gradlew -p android :feed-refresh-module:testDebugUnitTest` - Kotlin unit tests of the native module (JVM, no device)
 - `npm start` - Start Expo dev server
 - `npm run android` - Start on Android device
+- `npm run android:emulator` - Build + install the debug app on the local AVD `noticioso-test` and start Metro (JS hot-reloads; rerun after Kotlin/native changes). `npm run android:emulator:prebuild` regenerates `android/` first (after app.json / plugin / native dependency changes)
 - `npm run ios` - Start on iOS device
+
+## Architecture: one app, one boundary
+
+Full description: `docs/architecture.md`. The rule that matters:
+
+- **The native module (`modules/FeedRefreshModule`, Kotlin) is the data pipeline and the ONLY writer** of feed/article data: it fetches and parses feeds, downloads articles, applies generations, garbage-collects and clears caches.
+- **JS is UI + reads + user configuration.** It reads SQLite and the article files, and calls native functions to change anything. The user's feed list lives in AsyncStorage and is owned by JS.
+- Do NOT add a JS implementation of something native already does (fetching feeds, downloading articles, extracting metadata, writing generation tables). Add or extend a native function instead.
+- What both sides must agree on (database path, article file names, snapshot JSON) is pinned by shared fixtures in `modules/FeedRefreshModule/contract/`, checked by a Jest test and a Kotlin test.
 
 ## Project Structure
 
-- React Native Expo app with TypeScript
-- Expo Router for navigation (`app/` directory)
+- React Native Expo app with TypeScript; Expo Router for navigation
 - Path aliases: `@/*` and `~/*` point to project root
-- Components in `components/`, services in `services/`, providers in `providers/`
+
+```
+app/          Routes (expo-router). Tests cannot live here (they would become routes) -> __tests__/
+components/   UI components
+providers/    React context (FeedsProvider composes the hooks below)
+hooks/        useRefreshLifecycle (refresh cycle + progress + toast), useFeedCacheStatus, ...
+services/     JS logic, one class + singleton each (see below)
+db/           SQLite from JS: schema (no migrations: rebuilt on version change, see db/README.md), READ-only repositories
+lib/          Pure helpers (feedSchema, timeFormatters, url); lib/webview/ = scripts that run INSIDE the WebView
+theme/ types/
+modules/FeedRefreshModule/
+  src/        JS bindings, types, events.ts (native event subscriptions), web stub
+  contract/   Fixtures shared by Jest and Kotlin tests
+  android/src/main/java/   Kotlin: FeedRefreshModule.kt (API only) + worker/ db/ feeds/ articles/
+  android/src/test/java/   Kotlin unit tests
+scripts/android-test/      Emulator harness (see "Emulator Testing")
+docs/         architecture.md (current), history/ (old plans and reports)
+```
 
 ## Service Layer Architecture
 
-Services encapsulate all business logic and data access. Each service is a class with a singleton export:
+Services encapsulate JS logic and data access. Each service is a class with a singleton export:
 
 ```
 services/
-  StorageService.ts          -- AsyncStorage abstraction
-  FeedService.ts             -- RSS fetch, XML parse, feed CRUD
-  FeedCacheService.ts        -- In-memory feed cache with LRU
-  ArticleService.ts          -- HTML fetch, Readability extraction
-  ArticleCacheService.ts     -- Article cache with metadata
-  ArticlePreloader.ts        -- Preload articles for offline reading
-  ArticleRankingService.ts  -- Rank articles by feed priority
-  FeedDiscoveryService.ts    -- Find RSS feeds from websites
+  StorageService.ts          -- AsyncStorage abstraction; clearCaches() delegates to native
+  FeedService.ts             -- The user's feed list (CRUD, import/export) in AsyncStorage
+  FeedContentService.ts      -- Reads the active generation: feed content, article counts, the ● / ○ download indicator
+  FeedRefreshService.ts      -- Triggers native refresh, applies the pending generation, 1h staleness
+  ArticleService.ts          -- Reads cached articles (HTML file + metadata); asks native to download when missing
+  FeedDiscoveryService.ts    -- Find RSS feeds from websites (used when adding a feed)
 ```
 
 - Dependencies are injected via constructor WITHOUT default values
-- The singleton export passes all required dependencies explicitly (e.g. `export const feedService = new FeedService(storageService, feedCacheService, articleCacheService, articlePreloader, articleRankingService)`)
+- The singleton export passes all required dependencies explicitly (e.g. `export const feedContentService = new FeedContentService(articleService)`)
 - Tests instantiate the class directly with mock dependencies instead of using `jest.mock()`
 - IMPORTANT: Do NOT use default values in constructor parameters for classes with singleton exports - this can cause initialization order issues in JavaScript modules
 
@@ -69,7 +95,7 @@ services/
 - The HTML is **base64 encoded** before embedding because raw HTML can contain `</script>` which breaks the container tag
 - We already tried escaping with `content.replace(/<\/script/gi, '<\\/script')` and it did NOT work — articles rendered blank
 - An alternative to base64 would be stripping `<script>` tags from the HTML before embedding, but base64 is more robust
-- The encoding is done in `lib/horizontalNavigation/index.js` and decoded in `lib/articleParser.js`
+- The encoding is done in `lib/webview/horizontalNavigation/index.js` and decoded in `lib/webview/articleParser.js`
 
 ## Emulator Testing (agents can verify on-device by themselves)
 

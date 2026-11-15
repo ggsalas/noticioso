@@ -1,4 +1,10 @@
-import { articleCacheService } from "./ArticleCacheService";
+import { Paths, File, Directory } from "expo-file-system";
+import FeedRefreshModule from "@/modules/FeedRefreshModule";
+import {
+  articleMetadataRepository,
+  ArticleMetadataRepository,
+} from "@/db/ArticleMetadataRepository";
+import type { ArticleMetadata } from "~/types";
 
 export type ArticleData = {
   rawHtml: string;
@@ -8,18 +14,48 @@ export type ArticleData = {
   siteName?: string;
 };
 
+/** Downloads one article into the shared cache (HTML file + metadata). */
+export type ArticleDownloadFn = (url: string) => Promise<unknown>;
+
+// CONTRACT with native (articles/ArticleFiles.kt), pinned by
+// modules/FeedRefreshModule/contract/article-file-names.json: both runtimes read
+// and write the same files, so folder and file name must be computed identically.
+export const ARTICLE_HTML_DIRECTORY = "article-html";
+
+export function articleFileName(url: string): string {
+  return `${encodeURIComponent(url.replace(/[^a-zA-Z0-9]/g, "_"))}.html`;
+}
+
+const htmlCacheDir = new Directory(Paths.cache, ARTICLE_HTML_DIRECTORY);
+
+/**
+ * Articles, from JS: READ access to the article cache (HTML files in
+ * `<cache>/article-html/`, metadata in SQLite).
+ *
+ * Downloading and storing an article is done by the native module — in bulk after
+ * each feed refresh, and one by one through `downloadArticle` when the user opens
+ * an article that is not cached yet.
+ */
 export class ArticleService {
-  // Get article data - raw HTML (stripped) + metadata from cache
+  constructor(
+    private metadataRepo: ArticleMetadataRepository,
+    private downloadArticle: ArticleDownloadFn,
+  ) {}
+
+  /** Article for reading: cached HTML + metadata, downloading it first if needed. */
   getArticle = async (url: string): Promise<ArticleData> => {
-    // Try cache first
-    let html = await articleCacheService.getHtml(url);
+    let html = await this.getHtml(url);
 
     if (!html) {
-      html = await this.fetchHtml(url);
-      await articleCacheService.setHtml(url, html);
+      // Not cached yet: native downloads it, then we read it back
+      await this.downloadArticle(url);
+      html = await this.getHtml(url);
+      if (!html) {
+        throw new Error(`Article was downloaded but could not be read: ${url}`);
+      }
     }
 
-    const metadata = await articleCacheService.getMetadata(url);
+    const metadata = await this.getMetadata(url);
 
     return {
       rawHtml: html,
@@ -30,33 +66,28 @@ export class ArticleService {
     };
   };
 
-  // Preload: fetch and save metadata only (for feed list)
-  fetchArticleContent = async (url: string): Promise<void> => {
-    const hasCache = await articleCacheService.has(url);
-    if (hasCache) return;
+  /** Cached metadata (hero image, byline, title, excerpt), or null. */
+  getMetadata = async (url: string): Promise<ArticleMetadata | null> => {
+    return this.metadataRepo.getMetadata(url);
+  };
 
-    const html = await this.fetchHtml(url);
+  /** Cached HTML, or null. An article counts as cached only with metadata AND file. */
+  getHtml = async (url: string): Promise<string | null> => {
+    const metadata = await this.metadataRepo.getMetadata(url);
+    if (!metadata) return null;
+
     try {
-      await articleCacheService.setHtml(url, html);
-    } catch {}
-  };
+      const file = new File(this.getFilePath(url));
+      if (!file.exists) return null;
 
-  // Legacy - same as fetchArticleContent
-  fetchAndCacheHtml = async (url: string): Promise<string> => {
-    await this.fetchArticleContent(url);
-    return "";
-  };
-
-  private fetchHtml = async (url: string): Promise<string> => {
-    const res = await fetch(url);
-
-    if (!res.ok) {
-      throw new Error(
-        `Failed to fetch article from ${url}: ${res.status} ${res.statusText}`,
-      );
+      return await file.text();
+    } catch {
+      return null;
     }
+  };
 
-    return res.text();
+  private getFilePath = (url: string): string => {
+    return new File(htmlCacheDir, articleFileName(url)).uri;
   };
 
   private extractSiteName(html: string): string | undefined {
@@ -72,4 +103,6 @@ export class ArticleService {
   }
 }
 
-export const articleService = new ArticleService();
+export const articleService = new ArticleService(articleMetadataRepository, (url) =>
+  FeedRefreshModule.downloadArticle(url),
+);

@@ -26,11 +26,11 @@
 | Category           | Libraries                                                 |
 | ------------------ | --------------------------------------------------------- |
 | Framework          | React Native, Expo                                        |
-| RSS Parsing        | `fast-xml-parser`                                         |
+| Data pipeline      | Native Expo module in Kotlin (`modules/FeedRefreshModule`) |
 | Article Extraction | `@mozilla/readability` + `linkedom`                       |
 | HTML Rendering     | `react-native-webview` (custom paginated wrapper)         |
 | Gestures           | `react-native-gesture-handler`, `react-native-reanimated` |
-| Storage            | `@react-native-async-storage/async-storage`               |
+| Storage            | `expo-sqlite` (feeds and articles), `@react-native-async-storage/async-storage` (feed list) |
 
 ## Development
 
@@ -43,6 +43,9 @@ npm start
 # Run on a connected Android device
 npm run android
 
+# Build, install and run on the local emulator (AVD noticioso-test), with hot reload
+npm run android:emulator
+
 # Run on iOS simulator
 npm run ios
 
@@ -53,7 +56,7 @@ npm run lint
 npm test
 ```
 
-Infrastructure migration/repository tests use Node's `node:sqlite` against a real
+Database schema/repository tests use Node's `node:sqlite` against a real
 in-memory SQLite database; the production app still uses `expo-sqlite`. There is no
 hand-written SQL mock in the Jest setup.
 
@@ -94,20 +97,58 @@ export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
 
 ## Architecture
 
-The app is split into three distinct layers: a service layer that owns all business logic, a UI layer that stays intentionally thin, and a framework-agnostic library for the paginated reader engine.
+Noticioso is **one app with one boundary**. A native module written in Kotlin
+handles the data; the JavaScript side handles the user.
 
-### services/
+Why a native module: downloading and parsing dozens of feeds and hundreds of
+articles is heavy work. Done in JavaScript it competes with the UI for the same
+thread, so scrolling and page turns stutter or freeze. The native module does
+that work on its own background thread, so the UI stays responsive while new
+content is being prepared.
 
-The service layer is a set of plain TypeScript classes with no dependency on React or the component lifecycle. Dependencies are injected via constructor, so each service can be instantiated and tested in isolation. Together they cover feed discovery via DuckDuckGo, RSS fetching and parsing, article extraction through Mozilla Readability, and persistent storage over AsyncStorage.
+```
+ JavaScript (React Native)                   Native module (Kotlin)
+ ─────────────────────────                   ──────────────────────
+ Screens and reader            ── asks ──▶   Fetches and parses feeds
+ Decides WHEN to refresh                     Downloads articles
+ Reads what is stored          ◀─ events ──  Applies new content
+ The user's feed list                        Cleans up old content
+                    \                        /
+                     SQLite database + article files
+                     (only the native module writes)
+```
 
-### UI Layer
+### Native module — the data (`modules/FeedRefreshModule`)
 
-Screens and components read from context providers and call service methods directly. State lives in `FeedsProvider`. The theme system exposes a single `baseFontSize` from which all typography, spacing, and layout values are derived.
+Everything that fetches from the internet or changes stored data:
 
-### lib/
+- Fetches and parses every feed into a new **generation** of content.
+- Downloads each article (HTML, image, author, excerpt) so it can be read offline.
+- Applies a new generation when the user accepts it, and deletes what is no longer used.
+- Runs one task at a time and reports progress to the JavaScript side.
 
-Self-contained modules with no framework dependencies.
+It is the **only writer** of the database and the article files.
 
-#### lib/horizontalNavigation
+### JavaScript — the user (everything else)
 
-The core of the paginated reader. Generates the HTML document injected into the WebView, including the CSS multi-column layout, theme tokens as CSS variables, and a bridge script that communicates page dimensions and user interactions back to React Native via `postMessage`.
+- **Decides when**: refreshes on app open, on return to the app (if the content
+  is more than an hour old) or on demand, and offers new content with a toast.
+  The user keeps seeing the current content until they accept the new one.
+- **Reads and shows**: the feed list, articles, and download progress, straight
+  from the database and article files.
+- **Owns the user's configuration**: the list of feeds (add, remove, import,
+  export) and finding a site's feed when adding one.
+- **Renders**: screens, navigation and the paginated reader, which runs inside a
+  WebView (`lib/webview/`).
+- **Defines the database structure** (schema), but does not write content into
+  it. The database is a cache that can always be rebuilt, so it is never
+  migrated: when the schema changes it is recreated and refilled.
+
+Rule of thumb: if the native module already does something, JavaScript does not
+reimplement it — it asks the native module.
+
+The few things both sides must agree on (database location, article file names,
+stored feed format) are pinned by shared test fixtures, so changing only one
+side fails a test.
+
+More detail: [`docs/architecture.md`](docs/architecture.md).

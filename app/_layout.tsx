@@ -19,13 +19,13 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { useColorScheme, ToastAndroid, View, Text, TouchableOpacity } from "react-native";
 import { ThemeProvider as NavigationThemeProvider } from "@react-navigation/native";
-import { DarkTheme, DefaultTheme } from "@/constants/navigationThemes";
+import { DarkTheme, DefaultTheme } from "@/theme/navigationThemes";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { FeedsProvider } from "@/providers/FeedsProvider";
 import { PreviousRouteProvider } from "~/providers/PreviousRoute";
 import { useShareIntent } from "expo-share-intent";
-import { isWebUrl } from "@/validators/url";
-import { initializeDatabase } from "@/infrastructure/initializer";
+import { isWebUrl } from "@/lib/url";
+import { initializeDatabase } from "@/db/initializer";
 import FeedRefreshModule from "@/modules/FeedRefreshModule/src/FeedRefreshModule";
 import { AppState, type AppStateStatus } from "react-native";
 

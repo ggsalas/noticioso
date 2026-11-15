@@ -5,6 +5,8 @@
   "scripts": {
     "start": "expo start",
     "android": "node scripts/prepare-android-debug.js && expo run:android",
+    "android:emulator": "scripts/android-emulator.sh",
+    "android:emulator:prebuild": "scripts/android-emulator.sh --prebuild",
     "android:release-test": "node scripts/prepare-android-debug.js && expo run:android --variant release",
     "pull:android-db": "node scripts/pull-android-db.js",
     "ios": "expo run:ios",
@@ -65,8 +67,7 @@
     "react-native-web": "^0.21.0",
     "react-native-webview": "13.16.0",
     "react-native-worklets": "^0.7.2",
-    "readability": "^0.1.0",
-    "safe-html": "^1.0.0"
+    "readability": "^0.1.0"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",

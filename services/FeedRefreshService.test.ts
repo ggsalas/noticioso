@@ -1,52 +1,24 @@
 import { FeedRefreshService } from "./FeedRefreshService";
 import FeedRefreshModule from "@/modules/FeedRefreshModule";
 import { feedService } from "./FeedService";
-import {
-  activeRefreshRepository,
-  pendingRefreshRepository,
-  lastFetchCompletionRepository,
-  refreshRepository,
-  feedSnapshotRepository,
-  getDatabase,
-} from "@/infrastructure";
+import { refreshRepository } from "@/db";
 
 // Mock dependencies
 jest.mock("@/modules/FeedRefreshModule");
 jest.mock("./FeedService");
-jest.mock("@/infrastructure");
+jest.mock("@/db");
 
 const mockFeedRefreshModule = FeedRefreshModule as jest.Mocked<
   typeof FeedRefreshModule
 >;
 const mockFeedService = feedService as jest.Mocked<typeof feedService>;
-const mockActiveRefreshRepository =
-  activeRefreshRepository as jest.Mocked<typeof activeRefreshRepository>;
-const mockPendingRefreshRepository =
-  pendingRefreshRepository as jest.Mocked<typeof pendingRefreshRepository>;
-const mockLastFetchCompletionRepository =
-  lastFetchCompletionRepository as jest.Mocked<
-    typeof lastFetchCompletionRepository
-  >;
-const mockRefreshRepository =
-  refreshRepository as jest.Mocked<typeof refreshRepository>;
-const mockFeedSnapshotRepository =
-  feedSnapshotRepository as jest.Mocked<typeof feedSnapshotRepository>;
-const mockGetDatabase = getDatabase as jest.MockedFunction<typeof getDatabase>;
+const mockRefreshRepository = refreshRepository as jest.Mocked<typeof refreshRepository>;
 
 describe("FeedRefreshService", () => {
   let service: FeedRefreshService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-
-    // Mock database with transaction support
-    const mockDb = {
-      withTransactionAsync: jest.fn().mockImplementation(async (callback) => {
-        await callback();
-      }),
-      runAsync: jest.fn().mockResolvedValue(undefined),
-    };
-    mockGetDatabase.mockResolvedValue(mockDb as any);
 
     service = new FeedRefreshService();
   });
@@ -102,7 +74,7 @@ describe("FeedRefreshService", () => {
 
   describe("hasPendingRefresh", () => {
     it("should return true when pending refresh exists", async () => {
-      mockPendingRefreshRepository.get.mockResolvedValue({
+      mockRefreshRepository.getPending.mockResolvedValue({
         refreshId: "refresh-123",
         readyAt: "2026-01-01T00:00:00.000Z",
       });
@@ -113,7 +85,7 @@ describe("FeedRefreshService", () => {
     });
 
     it("should return false when no pending refresh", async () => {
-      mockPendingRefreshRepository.get.mockResolvedValue(null);
+      mockRefreshRepository.getPending.mockResolvedValue(null);
 
       const result = await service.hasPendingRefresh();
 
@@ -122,114 +94,25 @@ describe("FeedRefreshService", () => {
   });
 
   describe("applyPendingRefresh", () => {
-    it("should apply pending refresh and mark old active as superseded", async () => {
-      mockPendingRefreshRepository.get.mockResolvedValue({
-        refreshId: "refresh-new",
-        readyAt: "2026-01-01T00:00:00.000Z",
-      });
-      mockRefreshRepository.get.mockResolvedValue({
-        id: "refresh-new",
-        state: "ready",
-        createdAt: "2026-01-01T00:00:00.000Z",
-        completedAt: "2026-01-01T00:00:00.000Z",
-        appliedAt: null,
-        supersededAt: null,
-      });
-      mockActiveRefreshRepository.get.mockResolvedValue({
-        refreshId: "refresh-old",
-        appliedAt: "2025-12-31T00:00:00.000Z",
-      });
+    it("delegates to the native module and returns whether a generation was applied", async () => {
+      mockFeedRefreshModule.applyPendingRefresh.mockResolvedValueOnce(true);
+      expect(await service.applyPendingRefresh()).toBe(true);
 
-      const result = await service.applyPendingRefresh();
+      mockFeedRefreshModule.applyPendingRefresh.mockResolvedValueOnce(false);
+      expect(await service.applyPendingRefresh()).toBe(false);
 
-      expect(mockRefreshRepository.markSuperseded).toHaveBeenCalledWith(
-        "refresh-old"
-      );
-      expect(mockActiveRefreshRepository.set).toHaveBeenCalledWith(
-        "refresh-new"
-      );
-      expect(mockRefreshRepository.markApplied).toHaveBeenCalledWith(
-        "refresh-new"
-      );
-      expect(mockPendingRefreshRepository.clear).toHaveBeenCalled();
-      expect(result).toBe(true);
-      // Stage 4: GC runs after a successful apply
-      expect(mockFeedRefreshModule.collectGarbage).toHaveBeenCalledTimes(1);
-    });
-
-    it("should apply pending refresh when no active exists", async () => {
-      mockPendingRefreshRepository.get.mockResolvedValue({
-        refreshId: "refresh-123",
-        readyAt: "2026-01-01T00:00:00.000Z",
-      });
-      mockRefreshRepository.get.mockResolvedValue({
-        id: "refresh-123",
-        state: "ready",
-        createdAt: "2026-01-01T00:00:00.000Z",
-        completedAt: "2026-01-01T00:00:00.000Z",
-        appliedAt: null,
-        supersededAt: null,
-      });
-      mockActiveRefreshRepository.get.mockResolvedValue(null);
-
-      const result = await service.applyPendingRefresh();
-
-      expect(mockRefreshRepository.markSuperseded).not.toHaveBeenCalled();
-      expect(mockActiveRefreshRepository.set).toHaveBeenCalledWith(
-        "refresh-123"
-      );
-      expect(mockRefreshRepository.markApplied).toHaveBeenCalledWith(
-        "refresh-123"
-      );
-      expect(mockPendingRefreshRepository.clear).toHaveBeenCalled();
-      expect(result).toBe(true);
-    });
-
-    it("should return false when no pending refresh", async () => {
-      mockPendingRefreshRepository.get.mockResolvedValue(null);
-
-      const result = await service.applyPendingRefresh();
-
-      expect(result).toBe(false);
-      expect(mockActiveRefreshRepository.set).not.toHaveBeenCalled();
-      expect(mockRefreshRepository.markApplied).not.toHaveBeenCalled();
-      expect(mockPendingRefreshRepository.clear).not.toHaveBeenCalled();
-      expect(mockFeedRefreshModule.collectGarbage).not.toHaveBeenCalled();
-    });
-
-    it("should still apply when queuing garbage collection fails", async () => {
-      mockPendingRefreshRepository.get.mockResolvedValue({
-        refreshId: "refresh-123",
-        readyAt: "2026-01-01T00:00:00.000Z",
-      });
-      mockRefreshRepository.get.mockResolvedValue({
-        id: "refresh-123",
-        state: "ready",
-        createdAt: "2026-01-01T00:00:00.000Z",
-        completedAt: "2026-01-01T00:00:00.000Z",
-        appliedAt: null,
-        supersededAt: null,
-      });
-      mockActiveRefreshRepository.get.mockResolvedValue(null);
-      mockFeedRefreshModule.collectGarbage.mockRejectedValueOnce(new Error("boom"));
-      const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
-
-      const result = await service.applyPendingRefresh();
-      await Promise.resolve();
-
-      expect(result).toBe(true);
-      warn.mockRestore();
+      expect(mockFeedRefreshModule.applyPendingRefresh).toHaveBeenCalledTimes(2);
     });
   });
 
   describe("shouldRefresh", () => {
     it("should return true when a stale pending refresh exists (pending does not block)", async () => {
-      mockPendingRefreshRepository.get.mockResolvedValue({
+      mockRefreshRepository.getPending.mockResolvedValue({
         refreshId: "refresh-123",
         readyAt: "2026-01-01T00:00:00.000Z",
       });
       const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-      mockLastFetchCompletionRepository.get.mockResolvedValue(twoHoursAgo);
+      mockRefreshRepository.getLastFetchCompletion.mockResolvedValue(twoHoursAgo);
 
       const result = await service.shouldRefresh();
 
@@ -237,12 +120,12 @@ describe("FeedRefreshService", () => {
     });
 
     it("should return false when a pending refresh exists but last fetch is recent", async () => {
-      mockPendingRefreshRepository.get.mockResolvedValue({
+      mockRefreshRepository.getPending.mockResolvedValue({
         refreshId: "refresh-123",
         readyAt: "2026-01-01T00:00:00.000Z",
       });
       const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-      mockLastFetchCompletionRepository.get.mockResolvedValue(tenMinutesAgo);
+      mockRefreshRepository.getLastFetchCompletion.mockResolvedValue(tenMinutesAgo);
 
       const result = await service.shouldRefresh();
 
@@ -250,8 +133,8 @@ describe("FeedRefreshService", () => {
     });
 
     it("should return true when no pending and never fetched", async () => {
-      mockPendingRefreshRepository.get.mockResolvedValue(null);
-      mockLastFetchCompletionRepository.get.mockResolvedValue(null);
+      mockRefreshRepository.getPending.mockResolvedValue(null);
+      mockRefreshRepository.getLastFetchCompletion.mockResolvedValue(null);
 
       const result = await service.shouldRefresh();
 
@@ -259,9 +142,9 @@ describe("FeedRefreshService", () => {
     });
 
     it("should return true when last fetch is older than 1 hour", async () => {
-      mockPendingRefreshRepository.get.mockResolvedValue(null);
+      mockRefreshRepository.getPending.mockResolvedValue(null);
       const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-      mockLastFetchCompletionRepository.get.mockResolvedValue(twoHoursAgo);
+      mockRefreshRepository.getLastFetchCompletion.mockResolvedValue(twoHoursAgo);
 
       const result = await service.shouldRefresh();
 
@@ -269,93 +152,17 @@ describe("FeedRefreshService", () => {
     });
 
     it("should return false when last fetch is less than 1 hour ago", async () => {
-      mockPendingRefreshRepository.get.mockResolvedValue(null);
+      mockRefreshRepository.getPending.mockResolvedValue(null);
       const thirtyMinutesAgo = new Date(
         Date.now() - 30 * 60 * 1000
       ).toISOString();
-      mockLastFetchCompletionRepository.get.mockResolvedValue(
+      mockRefreshRepository.getLastFetchCompletion.mockResolvedValue(
         thirtyMinutesAgo
       );
 
       const result = await service.shouldRefresh();
 
       expect(result).toBe(false);
-    });
-  });
-
-  describe("getLastFetchCompletion", () => {
-    it("should return last fetch completion timestamp", async () => {
-      const timestamp = "2026-01-01T00:00:00.000Z";
-      mockLastFetchCompletionRepository.get.mockResolvedValue(timestamp);
-
-      const result = await service.getLastFetchCompletion();
-
-      expect(result).toBe(timestamp);
-    });
-
-    it("should return null when no last fetch", async () => {
-      mockLastFetchCompletionRepository.get.mockResolvedValue(null);
-
-      const result = await service.getLastFetchCompletion();
-
-      expect(result).toBeNull();
-    });
-  });
-
-  describe("getFeedData", () => {
-    it("should return feed data from active refresh", async () => {
-      const mockFeedData = {
-        date: new Date(),
-        feedType: "rss" as const,
-        rss: {
-          channel: {
-            title: "Test Feed",
-            description: "Test Description",
-            language: "en",
-            link: "https://example.com",
-            lastBuildDate: "2026-01-01T00:00:00.000Z",
-            item: [],
-          },
-        },
-      };
-
-      mockActiveRefreshRepository.get.mockResolvedValue({
-        refreshId: "refresh-123",
-        appliedAt: "2026-01-01T00:00:00.000Z",
-      });
-      mockFeedSnapshotRepository.get.mockResolvedValue({
-        data: mockFeedData,
-        cachedAt: "2026-01-01T00:00:00.000Z",
-      });
-
-      const result = await service.getFeedData("https://example.com/rss");
-
-      expect(result).toEqual(mockFeedData);
-      expect(mockFeedSnapshotRepository.get).toHaveBeenCalledWith(
-        "refresh-123",
-        "https://example.com/rss"
-      );
-    });
-
-    it("should return null when no active refresh", async () => {
-      mockActiveRefreshRepository.get.mockResolvedValue(null);
-
-      const result = await service.getFeedData("https://example.com/rss");
-
-      expect(result).toBeNull();
-      expect(mockFeedSnapshotRepository.get).not.toHaveBeenCalled();
-    });
-
-    it("should return null when snapshot not found", async () => {
-      mockActiveRefreshRepository.get.mockResolvedValue({
-        refreshId: "refresh-123",
-        appliedAt: "2026-01-01T00:00:00.000Z",
-      });
-      mockFeedSnapshotRepository.get.mockResolvedValue(null);
-
-      const result = await service.getFeedData("https://example.com/rss");
-
-      expect(result).toBeNull();
     });
   });
 });

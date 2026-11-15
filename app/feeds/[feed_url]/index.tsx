@@ -6,7 +6,7 @@ import { FeedContentItem, HandleLinkData, HandleRouterLinkData } from "@/types";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useMemo } from "react";
 import { Text, View, StyleSheet } from "react-native";
-import { formatLastRefresh } from "~/formatters/timeFormatters";
+import { formatLastRefresh } from "~/lib/timeFormatters";
 import { useWebViewHighlight } from "~/hooks/useWebViewHighlight";
 
 export default function FeedPage() {

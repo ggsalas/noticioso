@@ -1,136 +1,114 @@
 import { ArticleService } from "./ArticleService";
-import { articleCacheService } from "./ArticleCacheService";
+import { ArticleMetadataRepository } from "@/db/ArticleMetadataRepository";
+
+const mockRepo = {
+  getMetadata: jest.fn(),
+};
+const mockDownload = jest.fn();
+
+const URL = "https://example.com/article";
+const HTML = `<html><head><meta property="og:site_name" content="Example Site"></head><body>Hi</body></html>`;
 
 describe("ArticleService", () => {
   let service: ArticleService;
-  let mockSetHtml: jest.SpyInstance;
-  let mockGetHtml: jest.SpyInstance;
-  let mockGetMetadata: jest.SpyInstance;
-  let mockHas: jest.SpyInstance;
-  let mockFetch: jest.SpyInstance;
+  let getHtml: jest.SpyInstance;
 
   beforeEach(() => {
-    jest.clearAllMocks();
-    service = new ArticleService();
-
-    mockSetHtml = jest.spyOn(articleCacheService, "setHtml");
-    mockGetHtml = jest.spyOn(articleCacheService, "getHtml");
-    mockGetMetadata = jest.spyOn(articleCacheService, "getMetadata");
-    mockHas = jest.spyOn(articleCacheService, "has");
-    mockFetch = jest.spyOn(global, "fetch");
-  });
-
-  afterEach(() => {
-    mockSetHtml.mockRestore();
-    mockGetHtml.mockRestore();
-    mockGetMetadata.mockRestore();
-    mockHas.mockRestore();
-    mockFetch.mockRestore();
+    jest.resetAllMocks();
+    service = new ArticleService(
+      mockRepo as unknown as ArticleMetadataRepository,
+      mockDownload,
+    );
+    // Reading the HTML file needs the device filesystem; stub that single step
+    getHtml = jest.spyOn(service, "getHtml");
   });
 
   describe("getArticle", () => {
-    it("should fetch, cache, and return article data with metadata", async () => {
-      const mockHtml = `
-        <html>
-          <head>
-            <meta property="og:title" content="Test Article">
-            <meta property="og:image" content="https://example.com/image.jpg">
-            <meta property="og:site_name" content="Example Site">
-          </head>
-          <body>
-            <article>Content</article>
-          </body>
-        </html>
-      `;
-
-      mockGetHtml.mockResolvedValueOnce(null);
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        text: () => Promise.resolve(mockHtml),
-      });
-      mockSetHtml.mockResolvedValueOnce(undefined);
-      mockGetMetadata.mockResolvedValueOnce({
-        title: "Test Article",
+    it("returns cached HTML with metadata without downloading", async () => {
+      getHtml.mockResolvedValueOnce(HTML);
+      mockRepo.getMetadata.mockResolvedValueOnce({
         heroImage: "https://example.com/image.jpg",
-        byline: "",
-        excerpt: "",
+        title: "Test Article",
+        byline: "Jane",
       });
 
-      const result = await service.getArticle("https://example.com/article");
+      const result = await service.getArticle(URL);
 
-      expect(mockFetch).toHaveBeenCalledWith("https://example.com/article");
-      expect(mockSetHtml).toHaveBeenCalledWith(
-        "https://example.com/article",
-        mockHtml,
-      );
-      expect(result).toBeDefined();
-      expect(result.title).toBe("Test Article");
-      expect(result.heroImage).toBe("https://example.com/image.jpg");
-      expect(result.siteName).toBe("Example Site");
-      expect(result.rawHtml).toBeDefined();
+      expect(mockDownload).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        rawHtml: HTML,
+        heroImage: "https://example.com/image.jpg",
+        title: "Test Article",
+        byline: "Jane",
+        siteName: "Example Site",
+      });
     });
 
-    it("should use cached HTML when available", async () => {
-      const mockHtml = `<html><head><meta property="og:site_name" content="Cached"></head><body>Cached</body></html>`;
+    it("asks native to download when not cached, then reads it back", async () => {
+      getHtml.mockResolvedValueOnce(null).mockResolvedValueOnce(HTML);
+      mockDownload.mockResolvedValueOnce("/path/file.html");
+      mockRepo.getMetadata.mockResolvedValueOnce({ title: "Downloaded" });
 
-      mockGetHtml.mockResolvedValueOnce(mockHtml);
-      mockGetMetadata.mockResolvedValueOnce({
-        title: "Cached Article",
+      const result = await service.getArticle(URL);
+
+      expect(mockDownload).toHaveBeenCalledWith(URL);
+      expect(getHtml).toHaveBeenCalledTimes(2);
+      expect(result.rawHtml).toBe(HTML);
+      expect(result.title).toBe("Downloaded");
+    });
+
+    it("propagates the native download error", async () => {
+      getHtml.mockResolvedValueOnce(null);
+      mockDownload.mockRejectedValueOnce(new Error("HTTP 404 for " + URL));
+
+      await expect(service.getArticle(URL)).rejects.toThrow("HTTP 404");
+    });
+
+    it("fails clearly if the article still cannot be read after downloading", async () => {
+      getHtml.mockResolvedValue(null);
+      mockDownload.mockResolvedValueOnce("/path/file.html");
+
+      await expect(service.getArticle(URL)).rejects.toThrow("could not be read");
+    });
+
+    it("works without metadata", async () => {
+      getHtml.mockResolvedValueOnce("<html></html>");
+      mockRepo.getMetadata.mockResolvedValueOnce(null);
+
+      const result = await service.getArticle(URL);
+
+      expect(result).toEqual({
+        rawHtml: "<html></html>",
         heroImage: undefined,
-        byline: "",
-        excerpt: "",
+        title: undefined,
+        byline: undefined,
+        siteName: undefined,
       });
-
-      const result = await service.getArticle("https://example.com/cached");
-
-      expect(mockFetch).not.toHaveBeenCalled();
-      expect(result.title).toBe("Cached Article");
-    });
-
-    it("should throw error on failed fetch", async () => {
-      mockGetHtml.mockResolvedValueOnce(null);
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        statusText: "Not Found",
-      });
-
-      await expect(
-        service.getArticle("https://example.com/invalid"),
-      ).rejects.toThrow(
-        "Failed to fetch article from https://example.com/invalid",
-      );
     });
   });
 
-  describe("fetchArticleContent", () => {
-    it("should return early if already cached", async () => {
-      mockHas.mockResolvedValueOnce(true);
+  describe("getMetadata", () => {
+    it("returns metadata from the repository", async () => {
+      const metadata = { title: "T", heroImage: "https://example.com/i.jpg" };
+      mockRepo.getMetadata.mockResolvedValueOnce(metadata);
 
-      await service.fetchArticleContent("https://example.com/cached");
-
-      expect(mockHas).toHaveBeenCalledWith("https://example.com/cached");
-      expect(mockFetch).not.toHaveBeenCalled();
+      expect(await service.getMetadata(URL)).toBe(metadata);
+      expect(mockRepo.getMetadata).toHaveBeenCalledWith(URL);
     });
 
-    it("should fetch and save on cache miss", async () => {
-      mockHas.mockResolvedValueOnce(false);
+    it("returns null for an article that is not cached", async () => {
+      mockRepo.getMetadata.mockResolvedValueOnce(null);
 
-      const mockHtml = "<html><head></head><body>Content</body></html>";
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        text: () => Promise.resolve(mockHtml),
-      });
-      mockSetHtml.mockResolvedValueOnce(undefined);
+      expect(await service.getMetadata(URL)).toBeNull();
+    });
+  });
 
-      await service.fetchArticleContent("https://example.com/new");
+  describe("getHtml", () => {
+    it("is null without metadata (an article needs metadata AND file)", async () => {
+      getHtml.mockRestore();
+      mockRepo.getMetadata.mockResolvedValueOnce(null);
 
-      expect(mockHas).toHaveBeenCalledWith("https://example.com/new");
-      expect(mockFetch).toHaveBeenCalledWith("https://example.com/new");
-      expect(mockSetHtml).toHaveBeenCalledWith(
-        "https://example.com/new",
-        mockHtml,
-      );
+      expect(await service.getHtml(URL)).toBeNull();
     });
   });
 });
